@@ -40,7 +40,7 @@ export default function Navbar() {
           {isAdmin && <Link href="/admin/dashboard" className="hover:text-amber-400 transition-colors">Admin</Link>}
           {!user
             ? <Link href="/login" className="hover:text-amber-400 transition-colors">Login</Link>
-            : <span className="text-slate-300">Hi, {user.name?.split(" ")[0]}</span>
+            : <span className="text-slate-300">Hi, {user.name?.split(" ")?.[0]}</span>
           }
           <Link href="/subscription" className="text-amber-400 font-semibold hover:text-amber-300 transition-colors">Subscribe</Link>
         </div>
@@ -78,7 +78,7 @@ export default function Navbar() {
               <button onClick={() => setUserMenuOpen(!userMenuOpen)}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 hover:border-amber-400 transition-colors text-sm font-medium text-slate-700">
                 <User size={15} />
-                {user.name?.split(" ")[0]}
+                {user.name?.split(" ")?.[0]}
                 <ChevronDown size={13} />
               </button>
               {userMenuOpen && (

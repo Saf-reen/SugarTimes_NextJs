@@ -11,13 +11,17 @@ export default function ProtectedRoute({ children, requireSubscription = false }
   useEffect(() => {
     const token = localStorage.getItem("token");
     const plan = localStorage.getItem("plan");
-    if (!token) {
-      setStatus("no-auth");
-    } else if (requireSubscription && plan === "free") {
-      setStatus("no-sub");
-    } else {
-      setStatus("ok");
-    }
+    
+    // Using a microtask to avoid synchronous setState warning
+    Promise.resolve().then(() => {
+      if (!token) {
+        setStatus("no-auth");
+      } else if (requireSubscription && plan === "free") {
+        setStatus("no-sub");
+      } else {
+        setStatus("ok");
+      }
+    });
   }, [requireSubscription]);
 
   if (status === "checking") {

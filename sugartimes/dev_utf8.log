@@ -1,0 +1,42 @@
+﻿
+> sugartimes@0.1.0 dev
+> next dev -p 3001
+
+Γû▓ Next.js 16.2.1 (Turbopack)
+- Local:         http://localhost:3001
+- Network:       http://192.168.0.101:3001
+- Environments: .env
+Γ£ô Ready in 382ms
+node.exe : Γ¿» Another 
+next dev server is 
+already running.
+At line:1 char:1
++ & "C:\Program 
+Files\nodejs/node.exe" 
+"C:\Program 
+Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo        
+      : NotSpecified: (Γ  
+  ¿» Another nex...lrea   
+ dy running.:String) [    
+], RemoteException
+    + FullyQualifiedError 
+   Id : NativeCommandErr  
+  or
+ 
+
+- Local:        
+http://localhost:3000
+- PID:          14748
+- Dir:          C:\Users\s
+afur\OneDrive\Desktop\Suga
+r_Times\sugartimes
+- Log:          .next\dev\
+logs\next-development.log
+
+Run taskkill /PID 14748 
+/F to stop it.
+[?25h

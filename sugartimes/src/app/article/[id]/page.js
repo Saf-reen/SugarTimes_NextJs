@@ -9,12 +9,14 @@ export async function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }) {
-  const article = mockArticles.find((a) => a.id === Number(params.id));
+  const { id } = await params;
+  const article = mockArticles.find((a) => a.id === Number(id));
   return { title: article ? `${article.title} – Sugartimes` : "Article – Sugartimes" };
 }
 
-export default function ArticlePage({ params }) {
-  const article = mockArticles.find((a) => a.id === Number(params.id));
+export default async function ArticlePage({ params }) {
+  const { id } = await params;
+  const article = mockArticles.find((a) => a.id === Number(id));
   if (!article) notFound();
 
   const related = mockArticles.filter((a) => a.id !== article.id && a.category === article.category).slice(0, 3);
@@ -85,7 +87,7 @@ export default function ArticlePage({ params }) {
                 The government has indicated that further policy measures may be announced in the coming weeks to address supply-demand imbalances. Sugar mills are urged to maintain transparent reporting and comply with all regulatory requirements.
               </p>
               <blockquote className="border-l-4 border-amber-500 pl-4 my-6 text-slate-600 italic">
-                "The sugar industry is at a pivotal juncture. Collaborative efforts between mills, farmers, and the government are essential for sustainable growth." — Industry Expert
+                &quot;The sugar industry is at a pivotal juncture. Collaborative efforts between mills, farmers, and the government are essential for sustainable growth.&quot; — Industry Expert
               </blockquote>
               <p className="text-slate-700 leading-relaxed text-base">
                 For more detailed analysis and data, subscribers can access the full market report in the Sugartimes Premium section. Stay tuned for follow-up coverage.

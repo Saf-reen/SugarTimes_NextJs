@@ -13,7 +13,7 @@ export default function Footer() {
             </div>
             <span className="text-white font-black text-lg">Sugar<span className="text-amber-400">times</span></span>
           </div>
-          <p className="text-sm text-slate-400 mb-4">India's premier platform for sugar industry intelligence — news, markets, policy, and more.</p>
+          <p className="text-sm text-slate-400 mb-4">India&apos;s premier platform for sugar industry intelligence — news, markets, policy, and more.</p>
           <div className="flex gap-3">
             <a href="#" className="p-2 bg-slate-800 rounded-lg hover:bg-amber-500 transition-colors text-xs font-bold text-slate-300">𝕏</a>
             <a href="#" className="p-2 bg-slate-800 rounded-lg hover:bg-amber-500 transition-colors"><ExternalLink size={16} /></a>
