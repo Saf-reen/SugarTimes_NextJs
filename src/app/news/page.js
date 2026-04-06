@@ -40,10 +40,10 @@ function NewsContent() {
   useEffect(() => {
     const urlCategory = searchParams.get("category");
     const urlSearch = searchParams.get("search") || "";
-    
+
     if (urlCategory) setCategory(urlCategory);
-    setSearch(urlSearch); 
-    setPage(1); 
+    setSearch(urlSearch);
+    setPage(1);
   }, [searchParams]);
 
   // Scroll to top when category or page changes (gives "New Screen" feel)
@@ -62,15 +62,15 @@ function NewsContent() {
       if (category !== "All") params.category = category;
       if (search) params.search = search;
       const { data } = await articlesAPI.getAll(params);
-      
+
       const articlesArray = Array.isArray(data?.articles) ? data.articles : (Array.isArray(data) ? data : []);
       setArticles(articlesArray);
       setTotal(data.total || articlesArray.length);
     } catch (err) {
       console.error("Failed to fetch articles", err);
       // Fallback
-      const filteredMock = category === "All" 
-        ? mockArticles 
+      const filteredMock = category === "All"
+        ? mockArticles
         : mockArticles.filter(a => a.category?.toLowerCase().includes(category.toLowerCase()));
       setArticles(filteredMock);
       setTotal(filteredMock.length);
@@ -92,11 +92,11 @@ function NewsContent() {
           {search ? `Search Results: ${search}` : (category === "All" ? "Sugar Industry News" : category)}
         </h1>
         <p className="text-slate-500 font-medium text-sm">
-          {search 
-            ? `Showing results for "${search}" across all categories.` 
-            : (category === "All" 
-                ? "Latest updates from mills, markets, government, and the field" 
-                : `Exploring the latest insights and developments in ${category}`)}
+          {search
+            ? `Showing results for "${search}" across all categories.`
+            : (category === "All"
+              ? "Latest updates from mills, markets, government, and the field"
+              : `Exploring the latest insights and developments in ${category}`)}
         </p>
       </div>
 

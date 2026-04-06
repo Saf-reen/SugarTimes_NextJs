@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import AdminLayout from "@/components/AdminLayout";
 import { articlesAPI } from "@/lib/api";
 import { mockArticles } from "@/lib/mockData";
-import { Plus, Edit, Trash2, Eye, Search, Loader2, X, Save, TrendingUp } from "lucide-react";
+import { Plus, Edit, Trash2, Eye, Search, Loader2, X, Save, TrendingUp, FileText } from "lucide-react";
 
 function ArticlesContent() {
   const searchParams = useSearchParams();
@@ -87,76 +87,103 @@ function ArticlesContent() {
 
   return (
     <>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-8 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
         <div>
           <h1 className="text-2xl font-black text-slate-900 flex items-center gap-3">
-            {urlTrending && <TrendingUp className="text-green-500" />}
-            {urlTrending ? "Trending News" : (urlCategory || "All Articles")}
+            {urlTrending ? <TrendingUp className="text-green-500" /> : <FileText className="text-green-500" />}
+            {urlTrending ? "Trending Highlights" : (urlCategory || "Central Article Desk")}
           </h1>
-          <p className="text-slate-500 text-sm mt-1">{filtered.length} items found</p>
+          <p className="text-slate-500 text-sm mt-1 font-medium italic">
+            Managing {urlCategory ? `the "${urlCategory}" segment` : "all editorial content"} • {filtered.length} entries
+          </p>
         </div>
         <button onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition-colors">
-          <Plus size={16} /> New Article
+          className="flex items-center gap-3 bg-[#1b5e20] hover:bg-black text-white font-black px-6 py-3.5 rounded-xl text-[11px] uppercase tracking-widest transition-all shadow-lg hover:shadow-green-900/20 active:scale-95 group">
+          <Plus size={16} className="group-hover:rotate-90 transition-transform duration-300" /> 
+          {urlCategory ? `Add ${urlCategory} Article` : "Draft New Article"}
         </button>
       </div>
 
       {/* Create form modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="font-bold text-slate-900 text-lg">New Article</h2>
-              <button onClick={() => setShowForm(false)} className="p-1.5 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
-            </div>
-            <form onSubmit={handleCreate} className="space-y-4">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[32px] w-full max-w-2xl p-10 max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-300">
+            <div className="flex items-center justify-between mb-8 pb-6 border-b border-slate-50">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Title</label>
-                <input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+                <h2 className="font-black text-slate-900 text-2xl tracking-tight uppercase italic">{urlCategory ? `Publish to ${urlCategory}` : "New Editorial Draft"}</h2>
+                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">Fill in the details to go live on the user panel</p>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => setShowForm(false)} className="w-10 h-10 flex items-center justify-center hover:bg-slate-50 rounded-full text-slate-400 hover:text-slate-900 transition-all border border-transparent hover:border-slate-100"><X size={20} /></button>
+            </div>
+            
+            <form onSubmit={handleCreate} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="md:col-span-2">
+                  <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">Article Headline</label>
+                  <input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })}
+                    placeholder="e.g. Maharashtra sugar mills see record production..."
+                    className="w-full px-5 py-4 border-2 border-slate-50 rounded-2xl text-sm font-bold focus:outline-none focus:ring-4 focus:ring-green-400/10 focus:border-green-500 bg-slate-50/50 transition-all" />
+                </div>
+
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Category</label>
+                  <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">Publishing Desk (Category)</label>
                   <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-400 bg-white">
+                    disabled={!!urlCategory}
+                    className="w-full px-5 py-4 border-2 border-slate-50 rounded-2xl text-sm font-bold focus:outline-none focus:ring-4 focus:ring-green-400/10 focus:border-green-500 bg-white shadow-sm disabled:bg-slate-50 disabled:text-slate-400 transition-all appearance-none cursor-pointer">
                     {categories.map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
+                  {urlCategory && <p className="text-[10px] text-green-600 font-bold uppercase tracking-widest mt-2 ml-1 italic">Locked to this section</p>}
                 </div>
-                <div className="flex flex-col justify-center gap-2 pt-4">
-                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer">
-                    <input type="checkbox" checked={form.premium} onChange={(e) => setForm({ ...form, premium: e.target.checked })} className="rounded" />
-                    Premium
+
+                <div className="flex items-center gap-6 pt-2">
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <div className={`w-10 h-6 rounded-full relative transition-colors duration-300 ${form.premium ? "bg-slate-900" : "bg-slate-200"}`}>
+                       <input type="checkbox" className="hidden" checked={form.premium} onChange={(e) => setForm({ ...form, premium: e.target.checked })} />
+                       <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-md ${form.premium ? "left-5" : "left-1"}`}></div>
+                    </div>
+                    <span className="text-xs font-black text-slate-700 uppercase tracking-widest group-hover:text-slate-900">Premium Content</span>
                   </label>
-                  <label className="flex items-center gap-2 text-sm font-semibold text-green-600 cursor-pointer">
-                    <input type="checkbox" checked={form.trending} onChange={(e) => setForm({ ...form, trending: e.target.checked })} className="rounded accent-green-500" />
-                    Mark as Trending
+
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <div className={`w-10 h-6 rounded-full relative transition-colors duration-300 ${form.trending ? "bg-green-500" : "bg-slate-200"}`}>
+                       <input type="checkbox" className="hidden" checked={form.trending} onChange={(e) => setForm({ ...form, trending: e.target.checked })} />
+                       <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-md ${form.trending ? "left-5" : "left-1"}`}></div>
+                    </div>
+                    <span className="text-xs font-black text-green-600 uppercase tracking-widest group-hover:text-green-700">Trending Now</span>
                   </label>
                 </div>
               </div>
+
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Image URL</label>
-                <input value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })}
-                  placeholder="https://..."
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+                <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">Cover Media (Image URL)</label>
+                <div className="flex gap-4">
+                  <input value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })}
+                    placeholder="https://images.unsplash.com/..."
+                    className="flex-1 px-5 py-4 border-2 border-slate-50 rounded-2xl text-sm font-bold focus:outline-none focus:ring-4 focus:ring-green-400/10 focus:border-green-500 bg-slate-50/50 transition-all" />
+                </div>
               </div>
+
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Excerpt</label>
+                <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">Short Summary (Excerpt)</label>
                 <textarea rows={2} value={form.excerpt} onChange={(e) => setForm({ ...form, excerpt: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-400 resize-none" />
+                  placeholder="A one or two line hook for the listing card..."
+                  className="w-full px-5 py-4 border-2 border-slate-50 rounded-2xl text-sm font-bold focus:outline-none focus:ring-4 focus:ring-green-400/10 focus:border-green-500 bg-slate-50/50 transition-all resize-none" />
               </div>
+
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Content</label>
-                <textarea rows={5} required value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-400 resize-none" />
+                <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">Extended Content</label>
+                <textarea rows={6} required value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })}
+                  placeholder="Paste your full article text here. Use shifts for new lines..."
+                  className="w-full px-5 py-4 border-2 border-slate-50 rounded-2xl text-sm font-bold focus:outline-none focus:ring-4 focus:ring-green-400/10 focus:border-green-500 bg-slate-50/50 transition-all resize-none" />
               </div>
-              <div className="flex gap-3 pt-2">
+
+              <div className="flex gap-4 pt-4">
                 <button type="button" onClick={() => setShowForm(false)}
-                  className="flex-1 py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
+                  className="flex-1 py-4 border-2 border-slate-50 rounded-2xl text-xs font-black uppercase tracking-widest text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-all">Discard</button>
                 <button type="submit" disabled={saving}
-                  className="flex-1 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60">
-                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                  {saving ? "Saving..." : "Publish"}
+                  className="flex-[2] py-4 bg-[#1b5e20] hover:bg-black text-white rounded-2xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-green-900/20 transition-all disabled:opacity-40 active:scale-95">
+                  {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                  {saving ? "Processing..." : (urlCategory ? `Publish to ${urlCategory}` : "Publish Globally")}
                 </button>
               </div>
             </form>

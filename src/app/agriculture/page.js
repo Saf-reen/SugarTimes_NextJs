@@ -1,4 +1,4 @@
-﻿import NewsCard from "@/components/NewsCard";
+import NewsCard from "@/components/NewsCard";
 import { mockArticles } from "@/lib/mockData";
 
 export const metadata = { title: "Agriculture - Sugartimes" };

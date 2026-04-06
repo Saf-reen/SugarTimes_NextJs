@@ -725,20 +725,6 @@ export default async function HomePage() {
           </div>
         </section>
 
-        {/* Newsletter CTA */}
-        <section className="py-12 border-t border-slate-200 mb-8">
-          <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-3xl p-8 md:p-12 text-center text-white shadow-xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-green-500 rounded-full blur-3xl opacity-20 -mr-20 -mt-20"></div>
-            <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-500 rounded-full blur-3xl opacity-20 -ml-20 -mb-20"></div>
-            <h2 className="text-2xl md:text-3xl font-black mb-3 relative z-10">Get Industry Updates in Your Inbox</h2>
-            <p className="text-slate-300 md:text-lg mb-8 max-w-md mx-auto relative z-10">Join 10,000+ sugar industry professionals. Daily digest, weekly analysis.</p>
-            <div className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto relative z-10">
-              <input type="email" placeholder="Enter your email" className="flex-1 px-5 py-3.5 rounded-xl text-slate-900 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-green-400" />
-              <button className="bg-green-500 hover:bg-green-600 text-white font-bold px-8 py-3.5 rounded-xl transition-colors whitespace-nowrap shadow-lg hover:shadow-green-500/30">Subscribe Free</button>
-            </div>
-          </div>
-        </section>
-
       </div>
     </div>
   );
