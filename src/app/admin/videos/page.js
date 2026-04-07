@@ -51,10 +51,10 @@ export default function AdminVideos() {
   };
 
   const getYoutubeThumb = (url) => {
-     if (!url) return "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=300";
+     if (!url) return null;
      try {
         const id = url.split("v=")[1]?.split("&")[0] || url.split("/").pop();
-        return `https://img.youtube.com/vi/${id}/mqdefault.jpg`;
+        return id ? `https://img.youtube.com/vi/${id}/mqdefault.jpg` : null;
      } catch {
         return "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=300";
      }

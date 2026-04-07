@@ -25,6 +25,8 @@ const categories = [
   "News Archive"
 ];
 
+const ARTICLES_PER_PAGE = 12;
+
 function NewsContent() {
   const searchParams = useSearchParams();
   const initialCategory = searchParams.get("category") || "All";
@@ -118,14 +120,14 @@ function NewsContent() {
                 {articles.slice(2).map((a) => <NewsCard key={a._id || a.id} article={a} compact />)}
               </div>
               {/* Pagination */}
-              {total > 12 && (
+              {total > ARTICLES_PER_PAGE && (
                 <div className="flex justify-center gap-2 mt-8">
                   <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
                     className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium disabled:opacity-40 hover:border-green-400 transition-colors">
                     Previous
                   </button>
-                  <span className="px-4 py-2 text-sm text-slate-500">Page {page} of {Math.ceil(total / 12)}</span>
-                  <button onClick={() => setPage(p => p + 1)} disabled={page >= Math.ceil(total / 12)}
+                  <span className="px-4 py-2 text-sm text-slate-500">Page {page} of {Math.ceil(total / ARTICLES_PER_PAGE)}</span>
+                  <button onClick={() => setPage(p => p + 1)} disabled={page >= Math.ceil(total / ARTICLES_PER_PAGE)}
                     className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium disabled:opacity-40 hover:border-green-400 transition-colors">
                     Next
                   </button>

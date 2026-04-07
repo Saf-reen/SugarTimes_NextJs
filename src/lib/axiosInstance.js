@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const axiosInstance = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "https://st-be-kh3k.onrender.com",
+  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000",
   timeout: 10000,
 });
 

@@ -26,17 +26,17 @@ export default function VideoGallery() {
   }, []);
 
   const getEmbedUrl = (url) => {
-    if (!url) return "";
+    if (!url) return null;
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
     const match = url.match(regExp);
-    return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : url;
+    return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : (url || null);
   };
 
   const getThumbnailUrl = (url) => {
-    if (!url) return "";
+    if (!url) return null;
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
     const match = url.match(regExp);
-    return (match && match[2].length === 11) ? `https://img.youtube.com/vi/${match[2]}/mqdefault.jpg` : "";
+    return (match && match[2].length === 11) ? `https://img.youtube.com/vi/${match[2]}/mqdefault.jpg` : null;
   };
 
   return (
@@ -61,7 +61,7 @@ export default function VideoGallery() {
               <div className="aspect-video bg-black rounded-2xl overflow-hidden shadow-inner">
                 <iframe
                   className="w-full h-full"
-                  src={selectedVideo ? getEmbedUrl(selectedVideo.videoUrl) : ""}
+                  src={selectedVideo ? getEmbedUrl(selectedVideo.videoUrl) : null}
                   title={selectedVideo?.title}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen

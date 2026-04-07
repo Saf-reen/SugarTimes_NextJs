@@ -93,7 +93,7 @@ export default function AdminDashboard() {
             <BarChart data={revenueData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
               <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#94a3b8" }} />
-              <YAxis tick={{ fontSize: 12, fill: "#94a3b8" }} tickFormatter={(v) => `Rs ${v / 1000}K`} />
+              <YAxis tick={{ fontSize: 12, fill: "#94a3b8" }} tickFormatter={(v) => v === 0 ? "Rs 0" : `Rs ${v / 1000}K`} />
               <Tooltip formatter={(v) => [`Rs ${v.toLocaleString()}`, "Revenue"]} contentStyle={{ borderRadius: "12px" }} />
               <Bar dataKey="revenue" fill="#f59e0b" radius={[6, 6, 0, 0]} />
             </BarChart>
