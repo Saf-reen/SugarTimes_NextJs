@@ -7,7 +7,7 @@ async function getHomeData() {
   try {
     const fetchWithFallback = async (url) => {
       try {
-        const res = await fetch(url, { cache: "no-store", next: { revalidate: 0 } });
+        const res = await fetch(url);
         return res.ok ? await res.json() : [];
       } catch (err) {
         return [];

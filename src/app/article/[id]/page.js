@@ -24,10 +24,7 @@ async function getArticleData(id) {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
     
     // Fetch the main article
-    const res = await fetch(`${apiUrl}/articles/${id}`, { 
-      cache: "no-store",
-      next: { revalidate: 0 } 
-    });
+    const res = await fetch(`${apiUrl}/articles/${id}`);
     
     let article = null;
     if (res.ok) {
@@ -43,7 +40,7 @@ async function getArticleData(id) {
     if (!article) return null;
 
     // Fetch recent/popular articles to show in the sidebar & related
-    const allRes = await fetch(`${apiUrl}/articles?limit=10`, { cache: "no-store" });
+    const allRes = await fetch(`${apiUrl}/articles?limit=10`);
     const allData = allRes.ok ? await allRes.json() : { articles: [] };
     
     const articlesList = Array.isArray(allData.articles) ? allData.articles : (Array.isArray(allData) ? allData : []);
@@ -65,6 +62,21 @@ async function getArticleData(id) {
        };
     }
     return null;
+  }
+}
+
+export async function generateStaticParams() {
+  try {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+    const res = await fetch(`${apiUrl}/articles?limit=100`);
+    if (!res.ok) return mockArticles.map(a => ({ id: (a._id || a.id).toString() }));
+    const data = await res.json();
+    const articles = Array.isArray(data.articles) ? data.articles : (Array.isArray(data) ? data : []);
+    return articles.map((article) => ({
+      id: (article._id || article.id).toString(),
+    }));
+  } catch (error) {
+    return mockArticles.map(a => ({ id: (a._id || a.id).toString() }));
   }
 }
 
