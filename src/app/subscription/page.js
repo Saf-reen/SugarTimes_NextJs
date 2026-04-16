@@ -1,110 +1,705 @@
-﻿"use client";
-import { useState } from "react";
+"use client";
+import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, X, Loader2 } from "lucide-react";
+import {
+  CheckCircle2, Star, Award, Zap, Shield, Globe, Bell, Mail,
+  Newspaper, Smartphone, ArrowRight, ChevronDown, Phone, MapPin,
+  CreditCard, Building2, Banknote, MessageSquare, Loader2, X, Download
+} from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { paymentsAPI, subscriptionsAPI } from "@/lib/api";
 
-const plans = [
-  { id: "free", name: "Free", icon: "📰", price: 0, period: "month", description: "Basic access", popular: false, cta: "Get Started", features: ["5 articles/month", "Market overview", "Newsletter"], planKey: null },
-  { id: "monthly", name: "Basic", icon: "⭐", price: 299, period: "month", description: "For professionals", popular: false, cta: "Subscribe Now", features: ["Unlimited articles", "Full market data", "Policy updates", "Email alerts"], planKey: "monthly" },
-  { id: "yearly", name: "Premium", icon: "🚀", price: 799, period: "month", description: "Complete intelligence", popular: true, cta: "Go Premium", features: ["Everything in Basic", "All magazines", "WhatsApp alerts", "Analytics dashboard", "Priority support", "Downloadable reports"], planKey: "yearly" },
+// Prevent prerendering since this page uses useSearchParams()
+export const dynamic = "force-dynamic";
+
+/* ─── Pricing Data ──────────────────────────────────────────────────── */
+const PLANS = [
+  {
+    key: "1year", label: "1 Year", tagline: "Best for newcomers",
+    printPrice: 2000, digitalPrice: 1000,
+    badge: null, color: "emerald",
+  },
+  {
+    key: "2year", label: "2 Years", tagline: "Most popular choice",
+    printPrice: 3600, digitalPrice: 1600,
+    badge: "Popular", color: "amber",
+    savings: "Save ₹400",
+  },
+  {
+    key: "3year", label: "3 Years", tagline: "Best value per year",
+    printPrice: 5000, digitalPrice: 2000,
+    badge: "Best Value", color: "sky",
+    savings: "Save ₹1000",
+  },
+  {
+    key: "life", label: "Lifetime", tagline: "Never pay again",
+    printPrice: 15000, digitalPrice: 8000,
+    badge: "Lifetime", color: "violet",
+  },
 ];
 
-function Cell({ value }) {
-  if (value === true) return <Check size={16} className="text-green-500 mx-auto" />;
-  if (value === false) return <X size={16} className="text-slate-300 mx-auto" />;
-  return <span className="text-xs text-slate-600">{value}</span>;
+const BENEFITS = [
+  { icon: Newspaper, text: "Monthly print magazine delivered by courier / registered post" },
+  { icon: Smartphone, text: "Digital E-Magazine access via web & mobile" },
+  { icon: Bell, text: "Priority news updates via WhatsApp" },
+  { icon: Mail, text: "Newsletter with industry highlights every month" },
+  { icon: Globe, text: "Full access to sugartimes.co.in premium content" },
+  { icon: Star, text: "Mill data, ethanol news, policy updates, market trends" },
+];
+
+const PAYMENT_METHODS = [
+  {
+    id: "online", icon: Smartphone, title: "Online / UPI",
+    color: "from-emerald-500 to-teal-600",
+    desc: "Pay instantly via UPI, cards, or net banking.",
+    detail: "UPI ID: 8756062435@okbizaxis",
+  },
+  {
+    id: "neft", icon: Building2, title: "Bank Transfer / NEFT",
+    color: "from-sky-500 to-blue-600",
+    desc: "NEFT / RTGS to our current account.",
+    detail: "UCO Bank · A/C: 16110210000861 · IFSC: UCBA0001611 · Mumfordganj, Prayagraj",
+  },
+  {
+    id: "cheque", icon: CreditCard, title: "Cheque / DD",
+    color: "from-violet-500 to-purple-600",
+    desc: "Draw cheque / DD in favour of \"Sugar Times\".",
+    detail: "Payable at Allahabad. Courier: 485, Mumfordganj, Prayagraj – 211002",
+  },
+  {
+    id: "cash", icon: Banknote, title: "Cash at Office",
+    color: "from-amber-500 to-orange-600",
+    desc: "Walk in during office hours.",
+    detail: "485, Mumfordganj (Opp. Shivaji Park), Prayagraj – 211002",
+  },
+];
+
+/* ─── Colour mapping ─────────────────────────────────────────────────── */
+const COLOR = {
+  emerald: {
+    ring: "ring-emerald-400",
+    badge: "bg-emerald-500 text-white",
+    btn: "bg-emerald-600 hover:bg-emerald-700",
+    glow: "shadow-emerald-200",
+    text: "text-emerald-600",
+    bg: "bg-emerald-50",
+    border: "border-emerald-400",
+  },
+  amber: {
+    ring: "ring-amber-400",
+    badge: "bg-amber-500 text-white",
+    btn: "bg-amber-500 hover:bg-amber-600",
+    glow: "shadow-amber-200",
+    text: "text-amber-600",
+    bg: "bg-amber-50",
+    border: "border-amber-400",
+  },
+  sky: {
+    ring: "ring-sky-400",
+    badge: "bg-sky-500 text-white",
+    btn: "bg-sky-600 hover:bg-sky-700",
+    glow: "shadow-sky-200",
+    text: "text-sky-600",
+    bg: "bg-sky-50",
+    border: "border-sky-400",
+  },
+  violet: {
+    ring: "ring-violet-400",
+    badge: "bg-violet-600 text-white",
+    btn: "bg-violet-600 hover:bg-violet-700",
+    glow: "shadow-violet-200",
+    text: "text-violet-600",
+    bg: "bg-violet-50",
+    border: "border-violet-400",
+  },
+};
+
+/* ─── Helpers ────────────────────────────────────────────────────────── */
+function formatINR(n) {
+  return "₹" + n.toLocaleString("en-IN");
 }
 
+/* ─── Load Razorpay script ───────────────────────────────────────────── */
+function loadRazorpayScript() {
+  return new Promise((resolve) => {
+    if (document.getElementById("razorpay-sdk")) { resolve(true); return; }
+    const script = document.createElement("script");
+    script.id = "razorpay-sdk";
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MAIN PAGE
+═══════════════════════════════════════════════════════════════════════ */
 export default function SubscriptionPage() {
-  const [loading, setLoading] = useState(null);
-  const [success, setSuccess] = useState(false);
   const { user, isSubscribed, fetchSubscription } = useAuth();
   const router = useRouter();
 
-  const handleSubscribe = async (plan) => {
-    if (!plan.planKey) { router.push("/register"); return; }
-    if (!user) { router.push("/login"); return; }
-    setLoading(plan.id);
+  const [subType, setSubType] = useState("print"); // "print" | "digital"
+  const [selectedPlan, setSelectedPlan] = useState(null); // plan key
+  const [processing, setProcessing] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState("");
+  const formRef = useRef(null);
+
+  const handlePlanSelect = (key) => {
+    setSelectedPlan(key);
+    // Smooth scroll to the form section slightly after state updates
+    setTimeout(() => {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  };
+
+  const [form, setForm] = useState({
+    subscriberName: user?.name || "",
+    designation: "",
+    organisation: "",
+    address: "",
+    pincode: "",
+    email: user?.email || "",
+    mobile: "",
+    dateOfBirth: "",
+    plan: "",
+    subscriptionType: "print",
+    paymentMode: "online",
+    chequeTransactionNo: "",
+    dateOfPayment: "",
+  });
+
+  // Pre-fill user info when auth loads
+  useEffect(() => {
+    if (user) {
+      setForm((prev) => ({
+        ...prev,
+        subscriberName: user.name || prev.subscriberName,
+        email: user.email || prev.email,
+      }));
+    }
+  }, [user]);
+
+  // Pre-fill plan from URL search params (client-side only)
+  useEffect(() => {
     try {
-      const amount = plan.price;
-      const { data: payment } = await paymentsAPI.initiate({ amount });
-      await paymentsAPI.verify({ paymentId: payment.paymentId });
-      await subscriptionsAPI.create({ plan: plan.planKey, paymentId: payment.paymentId });
-      await fetchSubscription(user.id);
-      setSuccess(true);
+      const searchParams = new URLSearchParams(window.location.search);
+      const plan = searchParams.get("plan");
+      const type = searchParams.get("type");
+
+      if (plan) {
+        setSelectedPlan(plan);
+        setForm((prev) => ({ ...prev, plan }));
+        // Scroll to form with slight delay
+        setTimeout(() => {
+          formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 300);
+      }
+      if (type && (type === "print" || type === "digital")) {
+        setSubType(type);
+        setForm((prev) => ({ ...prev, subscriptionType: type }));
+      }
+    } catch (e) {
+      // Silently ignore errors during SSR
+    }
+  }, []);
+
+  // Sync form subType with toggle
+  useEffect(() => {
+    setForm((prev) => ({ ...prev, subscriptionType: subType }));
+  }, [subType]);
+
+  // Sync form plan with card selection
+  useEffect(() => {
+    if (selectedPlan) setForm((prev) => ({ ...prev, plan: selectedPlan }));
+  }, [selectedPlan]);
+
+  const handleFormChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+    // Sync plan & type back to state if changed from form selects
+    if (name === "subscriptionType") setSubType(value);
+    if (name === "plan") setSelectedPlan(value);
+  };
+
+  /* ── Razorpay Checkout flow ────────────────────────────────────────── */
+  const handlePay = async (e) => {
+    e.preventDefault();
+    setError("");
+
+    if (!user) { router.push("/login"); return; }
+
+    const planObj = PLANS.find((p) => p.key === form.plan);
+    if (!planObj) { setError("Please select a plan."); return; }
+
+    const amount = subType === "print" ? planObj.printPrice : planObj.digitalPrice;
+
+    setProcessing(true);
+    try {
+      const loaded = await loadRazorpayScript();
+      if (!loaded) throw new Error("Razorpay SDK failed to load. Check your connection.");
+
+      // 1. Create Razorpay order on backend
+      const { data: orderData } = await paymentsAPI.createOrder({ amount, currency: "INR" });
+
+      // 2. Open Razorpay Checkout
+      await new Promise((resolve, reject) => {
+        const rzp = new window.Razorpay({
+          key: orderData.keyId,
+          amount: orderData.amount,
+          currency: orderData.currency,
+          order_id: orderData.orderId,
+          name: "Sugar Times Magazine",
+          description: `${planObj.label} ${subType === "print" ? "Print" : "Digital"} Subscription`,
+          image: "/logo.png",
+          prefill: {
+            name: form.subscriberName,
+            email: form.email,
+            contact: form.mobile,
+          },
+          notes: {
+            plan: form.plan,
+            subscriptionType: form.subscriptionType,
+          },
+          theme: { color: "#16a34a" },
+          handler: async (response) => {
+            try {
+              // 3. Verify signature server-side
+              await paymentsAPI.verify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+              });
+
+              // 4. Create subscription record with all form data
+              await subscriptionsAPI.create({
+                ...form,
+                paymentId: response.razorpay_payment_id,
+                razorpayOrderId: response.razorpay_order_id,
+                razorpayPaymentId: response.razorpay_payment_id,
+              });
+
+              // 5. Refresh auth subscription status
+              await fetchSubscription(user.id);
+              resolve();
+              setSuccess(true);
+            } catch (err) {
+              reject(err);
+            }
+          },
+          modal: {
+            ondismiss: () => reject(new Error("Payment cancelled by user.")),
+          },
+          onerror: async (error) => {
+            // Handle payment rejection/error from Razorpay
+            try {
+              await paymentsAPI.handleFailure({
+                razorpay_order_id: error.metadata?.order_id || orderData.orderId,
+                error_code: error.code || "UNKNOWN_ERROR",
+                error_description: error.description || "Payment was rejected by Razorpay",
+              });
+            } catch (err) {
+              console.error("Failed to record payment failure:", err);
+            }
+            reject(new Error(error.description || "Payment failed. Please try again."));
+          },
+        });
+        rzp.open();
+      });
     } catch (err) {
-      alert(err.response?.data?.message || "Subscription failed. Please try again.");
+      setError(err?.response?.data?.message || err.message || "Payment failed. Please try again.");
     } finally {
-      setLoading(null);
+      setProcessing(false);
     }
   };
 
+  /* ── Success screen ─────────────────────────────────────────────────── */
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-        <div className="bg-white rounded-2xl border border-slate-100 p-10 text-center max-w-sm">
-          <div className="text-5xl mb-4">🎉</div>
-          <h2 className="text-2xl font-black text-slate-900 mb-2">You are subscribed!</h2>
-          <p className="text-slate-500 mb-6">Welcome to Sugartimes Premium. Enjoy full access.</p>
-          <a href="/dashboard" className="block w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl transition-colors">Go to Dashboard</a>
+      <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 flex items-center justify-center px-4">
+        <div className="bg-white rounded-3xl shadow-2xl p-10 text-center max-w-md w-full border border-emerald-100 animate-fade-in">
+          <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <CheckCircle2 className="w-10 h-10 text-emerald-600" />
+          </div>
+          <h2 className="text-3xl font-black text-slate-900 mb-2">You&apos;re subscribed!</h2>
+          <p className="text-slate-500 mb-2">Welcome to the Sugar Times family.</p>
+          <p className="text-sm text-slate-400 mb-8">
+            Your magazine will be delivered as per your selected plan. Check your email for confirmation.
+          </p>
+          <Link href="/dashboard"
+            className="block w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-2xl transition-colors text-center">
+            Go to Dashboard →
+          </Link>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="max-w-5xl mx-auto px-4 py-10">
-      <div className="text-center mb-12">
-        <h1 className="text-4xl font-black text-slate-900 mb-3">Simple, Transparent Pricing</h1>
-        <p className="text-slate-500 max-w-xl mx-auto">Choose the plan that fits your needs. Cancel anytime.</p>
-        {isSubscribed && (
-          <div className="inline-flex items-center gap-2 bg-green-50 text-green-700 text-sm font-semibold px-4 py-2 rounded-full mt-4">
-            ✅ You have an active subscription
-          </div>
-        )}
-      </div>
+  const currentPlanObj = PLANS.find((p) => p.key === selectedPlan);
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-16">
-        {plans.map((plan) => (
-          <div key={plan.id} className={`relative rounded-2xl border-2 p-6 flex flex-col ${plan.popular ? "border-green-500 shadow-xl shadow-green-100" : "border-slate-200 bg-white"}`}>
-            {plan.popular && (
-              <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                <span className="bg-green-500 text-white text-xs font-bold px-4 py-1 rounded-full">Most Popular</span>
+  return (
+    <div className="min-h-screen bg-slate-50">
+      {/* ── HERO ──────────────────────────────────────────────────────── */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-green-900 via-emerald-800 to-teal-900 text-white">
+        {/* decorative circles */}
+        <div className="absolute -top-32 -right-32 w-96 h-96 bg-emerald-600/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-20 -left-20 w-72 h-72 bg-teal-500/20 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative max-w-6xl mx-auto px-4 py-20 md:py-28 text-center">
+          {/* Bilingual tag */}
+          <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 py-1.5 mb-6 text-sm font-medium">
+            <Award className="w-4 h-4 text-amber-300" />
+            Subscribe to Sugar Times
+          </div>
+
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-black leading-tight mb-3">
+            चीनी उद्योग की<br />
+            <span className="text-emerald-300">एकमात्र हिन्दी</span> मासिक पत्रिका
+          </h1>
+          <p className="text-lg md:text-xl text-emerald-100 mb-2 font-medium">
+            India&apos;s Only Monthly Magazine for the Sugar Industry &amp; Sugarcane Farmers
+          </p>
+
+          {/* Stats row */}
+          <div className="flex flex-wrap justify-center gap-6 mt-10">
+            {[
+              { value: "10,700+", label: "Subscribers across India" },
+              { value: "30+", label: "Years of publication" },
+              { value: "36+", label: "Issues per year" },
+            ].map((s) => (
+              <div key={s.label} className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl px-6 py-4 text-center min-w-[130px]">
+                <div className="text-2xl font-black text-emerald-300">{s.value}</div>
+                <div className="text-xs text-emerald-100 mt-0.5">{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Offline Form Download */}
+          <div className="flex justify-center mt-10">
+            <a
+              href="/subscription-form.jpg"
+              download="SugarTimes_Subscription_Form.jpg"
+              className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-emerald-300/30 text-emerald-50 text-sm font-bold px-6 py-3 rounded-full transition-all hover:scale-105 shadow-xl"
+            >
+              <Download className="w-5 h-5 text-emerald-300" /> Prefer offline? Download Form
+            </a>
+          </div>
+
+          {/* Scroll cue */}
+          <div className="flex flex-col items-center mt-12 gap-1 opacity-60 animate-bounce">
+            <span className="text-xs tracking-widest uppercase">Choose your plan</span>
+            <ChevronDown className="w-5 h-5" />
+          </div>
+        </div>
+      </section>
+
+      {/* ── ACTIVE SUBSCRIPTION BANNER ─────────────────────────────────── */}
+      {isSubscribed && (
+        <div className="bg-emerald-600 text-white text-center py-3 px-4 text-sm font-semibold flex items-center justify-center gap-2">
+          <CheckCircle2 className="w-4 h-4" />
+          You have an active Sugar Times subscription. Thank you for your support!
+        </div>
+      )}
+
+      {/* ── PRICING SECTION ───────────────────────────────────────────── */}
+      <section className="max-w-6xl mx-auto px-4 py-16" id="plans">
+        <div className="text-center mb-10">
+          <h2 className="text-3xl md:text-4xl font-black text-slate-900 mb-2">Choose Your Plan</h2>
+          <p className="text-slate-500 text-sm md:text-base">Save more with longer subscriptions. Two-year and three-year plans offer significant savings.</p>
+
+          {/* Print / Digital Toggle */}
+          <div className="inline-flex items-center mt-6 bg-slate-200 rounded-full p-1">
+            {["print", "digital"].map((t) => (
+              <button
+                key={t}
+                onClick={() => setSubType(t)}
+                className={`px-6 py-2 rounded-full text-sm font-bold transition-all duration-200 capitalize ${subType === t
+                    ? "bg-white shadow text-emerald-700"
+                    : "text-slate-500 hover:text-slate-700"
+                  }`}
+              >
+                {t === "print" ? "📰 Print" : "📱 Digital"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {PLANS.map((plan) => {
+            const c = COLOR[plan.color];
+            const price = subType === "print" ? plan.printPrice : plan.digitalPrice;
+            const isSelected = selectedPlan === plan.key;
+            return (
+              <div
+                key={plan.key}
+                onClick={() => handlePlanSelect(plan.key)}
+                className={`relative cursor-pointer rounded-3xl border-2 bg-white p-7 flex flex-col transition-all duration-300 hover:shadow-xl hover:-translate-y-1 ${isSelected ? `${c.border} ${c.glow} shadow-2xl ring-2 ${c.ring}` : "border-slate-200 hover:border-slate-300"
+                  }`}
+              >
+                {plan.badge && (
+                  <div className={`absolute -top-3 left-1/2 -translate-x-1/2 text-xs font-black px-4 py-1 rounded-full ${c.badge} shadow`}>
+                    {plan.badge}
+                  </div>
+                )}
+                {plan.savings && (
+                  <div className="absolute top-4 right-4 bg-green-100 text-green-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                    {plan.savings}
+                  </div>
+                )}
+
+                <div className={`text-xs font-semibold uppercase tracking-wider mb-1 ${c.text}`}>{plan.label}</div>
+                <p className="text-xs text-slate-400 mb-4">{plan.tagline}</p>
+
+                <div className="mb-6">
+                  <span className="text-4xl font-black text-slate-900">{formatINR(price)}</span>
+                  <span className="text-slate-400 text-xs ml-1">/{plan.label.toLowerCase()}</span>
+                </div>
+
+                {/* Pill detail */}
+                <div className={`text-xs rounded-xl px-3 py-2 mb-5 ${c.bg} ${c.text} font-medium`}>
+                  {subType === "print"
+                    ? `Delivered by Courier / Regd. Post`
+                    : `Digital access on all devices`}
+                </div>
+
+                <div
+                  className={`mt-auto w-full py-2.5 rounded-2xl text-white text-sm font-bold text-center transition-colors ${c.btn} ${isSelected ? "ring-2 ring-offset-2 " + c.ring : ""
+                    }`}
+                >
+                  {isSelected ? "✓ Selected" : "Select Plan"}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ── BENEFITS ──────────────────────────────────────────────────── */}
+      <section className="bg-gradient-to-br from-slate-900 to-emerald-950 text-white py-16">
+        <div className="max-w-5xl mx-auto px-4">
+          <h2 className="text-3xl md:text-4xl font-black text-center mb-3">What You Get</h2>
+          <p className="text-center text-emerald-200 text-sm mb-10">Everything you need to stay ahead in India&apos;s sugar industry</p>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {BENEFITS.map(({ icon: Icon, text }) => (
+              <div key={text} className="flex items-start gap-4 bg-white/5 backdrop-blur border border-white/10 rounded-2xl p-5 hover:bg-white/10 transition-colors">
+                <div className="shrink-0 w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+                  <Icon className="w-5 h-5 text-emerald-300" />
+                </div>
+                <p className="text-sm text-slate-200 leading-relaxed">{text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── HOW TO SUBSCRIBE ──────────────────────────────────────────── */}
+      <section className="max-w-6xl mx-auto px-4 py-16">
+        <h2 className="text-3xl md:text-4xl font-black text-slate-900 text-center mb-2">How to Subscribe</h2>
+        <p className="text-slate-500 text-sm text-center mb-10">Choose any payment method convenient to you</p>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {PAYMENT_METHODS.map((m) => {
+            const Icon = m.icon;
+            return (
+              <div key={m.id} className="rounded-3xl overflow-hidden border border-slate-200 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 bg-white">
+                <div className={`bg-gradient-to-br ${m.color} p-5 flex items-center gap-3`}>
+                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                    <Icon className="w-5 h-5 text-white" />
+                  </div>
+                  <span className="font-bold text-white text-sm">{m.title}</span>
+                </div>
+                <div className="p-4">
+                  <p className="text-slate-600 text-xs mb-2 leading-relaxed">{m.desc}</p>
+                  <p className="text-slate-400 text-[11px] leading-relaxed">{m.detail}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ── SUBSCRIPTION FORM ─────────────────────────────────────────── */}
+      <section className="bg-white border-t border-slate-100 py-16" id="subscribe-form" ref={formRef}>
+        <div className="max-w-3xl mx-auto px-4">
+          <div className="text-center mb-10">
+            <div className="inline-flex items-center gap-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-4 py-1.5 text-sm font-semibold mb-4">
+              <Shield className="w-4 h-4" />
+              Secure Subscription Form
+            </div>
+            <h2 className="text-3xl md:text-4xl font-black text-slate-900 mb-2">Fill Your Details</h2>
+            <p className="text-slate-500 text-sm">All fields marked * are required. Your data is safe with us.</p>
+          </div>
+
+          {/* Selected plan summary */}
+          {currentPlanObj && (
+            <div className="mb-6 bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center justify-between">
+              <div>
+                <span className="text-xs text-emerald-600 font-semibold uppercase">Selected</span>
+                <div className="font-black text-slate-900">
+                  {currentPlanObj.label} — {subType === "print" ? "Print" : "Digital"}
+                </div>
+              </div>
+              <div className="text-2xl font-black text-emerald-600">
+                {formatINR(subType === "print" ? currentPlanObj.printPrice : currentPlanObj.digitalPrice)}
+              </div>
+            </div>
+          )}
+
+          <form ref={formRef} onSubmit={handlePay} className="space-y-5">
+            {/* Row 1 */}
+            <div className="grid md:grid-cols-2 gap-4">
+              <Field label="Full Name *" name="subscriberName" value={form.subscriberName} onChange={handleFormChange} required placeholder="e.g. Rajesh Kumar" />
+              <Field label="Designation" name="designation" value={form.designation} onChange={handleFormChange} placeholder="e.g. Mill Manager" />
+            </div>
+
+            {/* Row 2 */}
+            <Field label="Organisation / Mill Name" name="organisation" value={form.organisation} onChange={handleFormChange} placeholder="e.g. XYZ Sugar Mills Pvt. Ltd." />
+
+            {/* Row 3 */}
+            <Field label="Complete Address *" name="address" value={form.address} onChange={handleFormChange} required placeholder="House/Shop No., Street, City, State" as="textarea" rows={3} />
+
+            {/* Row 4 */}
+            <div className="grid md:grid-cols-3 gap-4">
+              <Field label="Pin Code *" name="pincode" value={form.pincode} onChange={handleFormChange} required placeholder="e.g. 211002" maxLength={6} />
+              <Field label="Email *" name="email" type="email" value={form.email} onChange={handleFormChange} required placeholder="yourname@example.com" />
+              <Field label="Mobile Number *" name="mobile" type="tel" value={form.mobile} onChange={handleFormChange} required placeholder="+91 9XXXXXXXXX" />
+            </div>
+
+            {/* Row 5 */}
+            <div className="grid md:grid-cols-2 gap-4">
+              <Field label="Date of Birth" name="dateOfBirth" type="date" value={form.dateOfBirth} onChange={handleFormChange} />
+              {/* Plan Select */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Subscription Plan *</label>
+                <select name="plan" value={form.plan} onChange={handleFormChange} required
+                  className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 outline-none bg-white transition-shadow">
+                  <option value="">Select Plan</option>
+                  {PLANS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* Row 6 */}
+            <div className="grid md:grid-cols-3 gap-4">
+              {/* Type */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Type *</label>
+                <select name="subscriptionType" value={form.subscriptionType} onChange={handleFormChange} required
+                  className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 outline-none bg-white transition-shadow">
+                  <option value="print">Print (Courier / Regd. Post)</option>
+                  <option value="digital">E-Magazine (Digital)</option>
+                </select>
+              </div>
+              {/* Payment Mode */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Payment Mode *</label>
+                <select name="paymentMode" value={form.paymentMode} onChange={handleFormChange} required
+                  className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 outline-none bg-white transition-shadow">
+                  <option value="online">Online / UPI</option>
+                  <option value="rtgs">RTGS / NEFT</option>
+                  <option value="cheque">Cheque / DD</option>
+                  <option value="cash">Cash</option>
+                </select>
+              </div>
+              {/* Cheque/Txn No */}
+              <Field label="Cheque / Transaction No." name="chequeTransactionNo" value={form.chequeTransactionNo} onChange={handleFormChange} placeholder="Optional" />
+            </div>
+
+            {/* Row 7
+            <Field label="Date of Payment" name="dateOfPayment" type="date" value={form.dateOfPayment} onChange={handleFormChange} /> */}
+
+            {/* Error */}
+            {error && (
+              <div className="flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">
+                <X className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>{error}</span>
               </div>
             )}
-            <div className="text-2xl mb-3">{plan.icon}</div>
-            <h3 className="text-lg font-bold text-slate-900 mb-1">{plan.name}</h3>
-            <p className="text-sm text-slate-500 mb-4">{plan.description}</p>
-            <div className="mb-6">
-              <span className="text-3xl font-black text-slate-900">Rs {plan.price}</span>
-              <span className="text-slate-500 text-sm">/{plan.period}</span>
-            </div>
-            <ul className="space-y-2.5 mb-6 flex-1">
-              {plan.features.map((f, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-slate-600">
-                  <Check size={15} className="text-green-500 mt-0.5 shrink-0" />{f}
-                </li>
-              ))}
-            </ul>
-            <button onClick={() => handleSubscribe(plan)} disabled={loading === plan.id}
-              className={`w-full text-center py-3 rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-60 ${plan.popular ? "bg-green-500 hover:bg-green-600 text-white" : "bg-slate-100 hover:bg-slate-200 text-slate-800"}`}>
-              {loading === plan.id && <Loader2 size={14} className="animate-spin" />}
-              {loading === plan.id ? "Processing..." : plan.cta}
-            </button>
-          </div>
-        ))}
-      </div>
 
-      <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-8 text-center text-white">
-        <h2 className="text-2xl font-black mb-2">Ready to get started?</h2>
-        <p className="text-green-100 mb-6">Join 4,800+ sugar industry professionals on Sugartimes</p>
-        <div className="flex flex-wrap gap-3 justify-center">
-          <a href="/register" className="bg-white text-green-600 font-bold px-6 py-3 rounded-xl hover:bg-green-50 transition-colors">Create Account</a>
-          <a href="/contact" className="bg-green-700 text-white font-bold px-6 py-3 rounded-xl hover:bg-green-800 transition-colors">Contact Sales</a>
+            {/* Submit */}
+            <button
+              type="submit"
+              disabled={processing || !form.plan}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black py-4 rounded-2xl text-base transition-all duration-200 flex items-center justify-center gap-3 shadow-lg shadow-emerald-200 hover:shadow-xl hover:-translate-y-0.5"
+            >
+              {processing ? (
+                <><Loader2 className="w-5 h-5 animate-spin" />Processing…</>
+              ) : (
+                <>
+                  <Zap className="w-5 h-5" />
+                  {form.plan
+                    ? `Pay ${formatINR(
+                      (() => {
+                        const p = PLANS.find((x) => x.key === form.plan);
+                        return p ? (form.subscriptionType === "print" ? p.printPrice : p.digitalPrice) : 0;
+                      })()
+                    )} via Razorpay`
+                    : "Select a plan to continue"}
+                  <ArrowRight className="w-5 h-5" />
+                </>
+              )}
+            </button>
+
+            <p className="text-center text-xs text-slate-400 flex items-center justify-center gap-1.5 pt-1">
+              <Shield className="w-3.5 h-3.5" />
+              Secured by Razorpay · 256-bit SSL encryption
+              {!user && (
+                <span>
+                  {" "}·{" "}
+                  <Link href="/login" className="text-emerald-600 underline font-medium">Login</Link>{" "}
+                  required to pay
+                </span>
+              )}
+            </p>
+          </form>
         </div>
-      </div>
+      </section>
+
+      {/* ── CONTACT / HELP ────────────────────────────────────────────── */}
+      <section className="bg-gradient-to-br from-slate-900 to-emerald-950 text-white py-12">
+        <div className="max-w-4xl mx-auto px-4 text-center">
+          <h3 className="text-2xl font-black mb-2">Need Help?</h3>
+          <p className="text-emerald-200 text-sm mb-8">Contact our subscription team — we&apos;re happy to assist.</p>
+          <div className="flex flex-wrap justify-center gap-4">
+            <a href="tel:+917355453462" className="flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-2xl px-5 py-3 text-sm font-semibold transition-colors">
+              <MessageSquare className="w-4 h-4 text-emerald-300" />WhatsApp / Call: +91 7355453462
+            </a>
+            <a href="tel:+919415305911" className="flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-2xl px-5 py-3 text-sm font-semibold transition-colors">
+              <Phone className="w-4 h-4 text-emerald-300" />+91 9415305911
+            </a>
+            <a href="mailto:info@sugartimes.co.in" className="flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-2xl px-5 py-3 text-sm font-semibold transition-colors">
+              <Mail className="w-4 h-4 text-emerald-300" />info@sugartimes.co.in
+            </a>
+            <a href="https://sugartimes.co.in/subscribe" target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-2xl px-5 py-3 text-sm font-semibold transition-colors">
+              <Globe className="w-4 h-4 text-emerald-300" />sugartimes.co.in/subscribe
+            </a>
+          </div>
+          <div className="flex items-center justify-center gap-2 mt-6 text-xs text-emerald-300">
+            <MapPin className="w-3.5 h-3.5" />
+            485, Mumfordganj (Opp. Shivaji Park), Prayagraj – 211002
+          </div>
+          <p className="mt-3 text-xs text-emerald-400">
+            Magazine is delivered by courier / registered post. Please provide your complete address with pin code.
+          </p>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/* ─── Reusable Field Component ───────────────────────────────────────── */
+function Field({ label, name, value, onChange, required, placeholder, type = "text", as, rows, maxLength }) {
+  const baseClass =
+    "w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 outline-none bg-white transition-shadow placeholder:text-slate-300";
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">{label}</label>
+      {as === "textarea" ? (
+        <textarea name={name} value={value} onChange={onChange} required={required} placeholder={placeholder} rows={rows} className={baseClass + " resize-none"} />
+      ) : (
+        <input name={name} type={type} value={value} onChange={onChange} required={required} placeholder={placeholder} maxLength={maxLength} className={baseClass} />
+      )}
     </div>
   );
 }

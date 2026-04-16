@@ -6,6 +6,8 @@ import { articlesAPI, magazinesAPI } from "@/lib/api";
 import { mockArticles, mockMagazines } from "@/lib/mockData";
 import { Download, Bookmark, Bell, User, LogOut, Star, Calendar, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { unwrapList } from "@/lib/unwrapList";
+import Logo from "@/components/Logo";
 
 export default function DashboardPage() {
   const { user, subscription, loading: authLoading, logout } = useAuth();
@@ -28,8 +30,8 @@ export default function DashboardPage() {
         articlesAPI.getAll({ limit: 4 }),
         magazinesAPI.getAll(),
       ]);
-      setArticles(artRes.status === "fulfilled" ? artRes.value.data.articles || [] : mockArticles.slice(0, 4));
-      setMagazines(magRes.status === "fulfilled" ? magRes.value.data.slice(0, 3) : mockMagazines.slice(0, 3));
+      setArticles(artRes.status === "fulfilled" ? unwrapList(artRes.value.data).slice(0, 4) : mockArticles.slice(0, 4));
+      setMagazines(magRes.status === "fulfilled" ? unwrapList(magRes.value.data).slice(0, 3) : mockMagazines.slice(0, 3));
     } catch {
       setArticles(mockArticles.slice(0, 4));
       setMagazines(mockMagazines.slice(0, 3));
@@ -52,10 +54,15 @@ export default function DashboardPage() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-10">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-2xl font-black text-slate-900">My Dashboard</h1>
-          <p className="text-slate-500 text-sm mt-1">Welcome back, {user?.name}</p>
+      <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 gap-6">
+        <div className="flex flex-col gap-4">
+          <Link href="/" className="hover:opacity-80 transition-opacity w-fit">
+            <Logo className="h-14" />
+          </Link>
+          <div>
+            <h1 className="text-3xl font-black text-slate-900 tracking-tight">My Dashboard</h1>
+            <p className="text-slate-500 text-sm mt-1 font-medium italic">Welcome back, {user?.name}</p>
+          </div>
         </div>
         <button onClick={handleLogout} className="flex items-center gap-2 text-sm text-slate-500 hover:text-red-500 transition-colors">
           <LogOut size={16} /> Logout

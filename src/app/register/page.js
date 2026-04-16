@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, Lock, Mail, User } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import Logo from "@/components/Logo";
 
 export default function RegisterPage() {
   const [form, setForm] = useState({ name: "", email: "", password: "" });
@@ -31,11 +32,8 @@ export default function RegisterPage() {
     <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-2">
-            <div className="w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center">
-              <span className="text-white font-black text-xl">S</span>
-            </div>
-            <span className="text-2xl font-black text-slate-900">Sugar<span className="text-green-500">times</span></span>
+          <Link href="/" className="inline-flex items-center gap-2 hover:opacity-80 transition-opacity">
+            <Logo className="h-16" />
           </Link>
           <p className="text-slate-500 mt-2 text-sm">Create your account</p>
         </div>

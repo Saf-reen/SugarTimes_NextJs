@@ -8,8 +8,13 @@ export default function NewsCard({ article, compact = false }) {
     return `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}${url}`;
   };
 
+  const articleId = article._id || article.id || "";
+  const formattedDate = article.date && !isNaN(new Date(article.date).getTime())
+    ? new Date(article.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+    : "Recently";
+
   return (
-    <Link href={`/article/${article.id}`} className="group block bg-white rounded-xl border border-slate-100 overflow-hidden hover:shadow-md transition-all duration-200 hover:-translate-y-0.5">
+    <Link href={articleId ? `/article/${articleId}` : "#"} className="group block bg-white rounded-xl border border-slate-100 overflow-hidden hover:shadow-md transition-all duration-200 hover:-translate-y-0.5">
       <div className={`relative overflow-hidden ${compact ? "h-36" : "h-48"}`}>
         <img
           src={getImageUrl(article.image)}
@@ -39,7 +44,7 @@ export default function NewsCard({ article, compact = false }) {
         {!compact && <p className="text-sm text-slate-500 line-clamp-2 mb-3">{article.excerpt}</p>}
         <div className="flex items-center gap-1 text-xs text-slate-400">
           <Calendar size={11} />
-          <span>{new Date(article.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
+          <span>{formattedDate}</span>
         </div>
       </div>
     </Link>

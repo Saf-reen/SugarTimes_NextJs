@@ -1,23 +1,26 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Lock } from "lucide-react";
 import Link from "next/link";
 
 export default function ProtectedRoute({ children, requireSubscription = false }) {
   const [status, setStatus] = useState("checking"); // checking | ok | no-auth | no-sub
-  const router = useRouter();
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const plan = localStorage.getItem("plan");
-    if (!token) {
-      setStatus("no-auth");
-    } else if (requireSubscription && plan === "free") {
-      setStatus("no-sub");
-    } else {
-      setStatus("ok");
-    }
+    const timer = setTimeout(() => {
+      const token = localStorage.getItem("token");
+      const plan = localStorage.getItem("plan");
+      let newStatus = "ok";
+
+      if (!token) {
+        newStatus = "no-auth";
+      } else if (requireSubscription && plan === "free") {
+        newStatus = "no-sub";
+      }
+
+      setStatus(newStatus);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [requireSubscription]);
 
   if (status === "checking") {

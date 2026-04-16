@@ -29,12 +29,13 @@ body {
 /* Scrolling News Ticker Animation */
 @keyframes ticker {
   0% { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
+  100% { transform: translateX(-100%); }
 }
 
 .animate-ticker {
   display: flex !important;
-  animation: ticker 40s linear infinite;
+  animation: ticker 45s linear infinite;
+  will-change: transform;
 }
 
 .animate-ticker:hover {

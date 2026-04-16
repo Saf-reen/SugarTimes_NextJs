@@ -5,24 +5,11 @@ import NewsCard from "@/components/NewsCard";
 import { articlesAPI } from "@/lib/api";
 import { Search, Loader2 } from "lucide-react";
 import { mockArticles } from "@/lib/mockData";
+import { CATEGORY_TREE } from "@/lib/categories";
 
 const categories = [
   "All",
-  "Sugar Industry News",
-  "Ethanol",
-  "Molasses",
-  "Market Trends",
-  "Agriculture",
-  "International Trade",
-  "Interviews",
-  "Environmental Impact",
-  "Technology",
-  "Sugarcane Department",
-  "Sugar Diet",
-  "Sugar Food",
-  "Policy Updates",
-  "Distillery Updates",
-  "News Archive"
+  ...CATEGORY_TREE.flatMap((p) => [p.label, ...p.children.map((c) => c.label)]),
 ];
 
 const ARTICLES_PER_PAGE = 12;
@@ -100,6 +87,21 @@ function NewsContent() {
               ? "Latest updates from mills, markets, government, and the field"
               : `Exploring the latest insights and developments in ${category}`)}
         </p>
+      </div>
+
+      {/* Mobile Category Selector */}
+      <div className="lg:hidden mb-8 overflow-x-auto pb-4 no-scrollbar">
+        <div className="flex gap-2 min-w-max">
+          {categories.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => { setCategory(cat); setPage(1); }}
+              className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all border ${category === cat ? "bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/10" : "bg-white text-slate-500 border-slate-100 hover:border-green-400"}`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
       </div>
 
 

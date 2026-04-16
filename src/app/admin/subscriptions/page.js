@@ -1,85 +1,522 @@
 "use client";
+import React, { useState, useEffect, useRef } from "react";
 import AdminLayout from "@/components/AdminLayout";
-import { mockUsers } from "@/lib/mockData";
-import { Edit, RefreshCw, Plus } from "lucide-react";
+import { adminAPI } from "@/lib/api";
+import { unwrapList } from "@/lib/unwrapList";
+import { Edit, Trash2, RefreshCw, Loader2, AlertCircle, CheckCircle2, Clock, XCircle, Search, Filter, X } from "lucide-react";
 
-const subscriptions = mockUsers.map((u, i) => ({
-  ...u,
-  plan: u.plan,
-  start: "2026-01-01",
-  end: i % 3 === 0 ? "2026-03-31" : "2027-01-01",
-  amount: u.plan === "Premium" ? 799 : u.plan === "Basic" ? 299 : 0,
-}));
+const formatDate = (dateString) => {
+  if (!dateString) return "—";
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
+const formatDateInput = (dateString) => {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "";
+  return date.toISOString().split("T")[0];
+};
 
 export default function AdminSubscriptions() {
+  const [subscriptions, setSubscriptions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [stats, setStats] = useState(null);
+
+  // Search and Filter State
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [status, setStatus] = useState("");
+  const [plan, setPlan] = useState("");
+  const [subscriptionType, setSubscriptionType] = useState("");
+
+  // Edit Modal State
+  const [editModal, setEditModal] = useState(null);
+  const [editData, setEditData] = useState({});
+  const [editLoading, setEditLoading] = useState(false);
+
+  // Delete Modal State
+  const [deleteModal, setDeleteModal] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const isMountedRef = useRef(true);
+
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    fetchData();
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, [debouncedSearch, status, plan, subscriptionType]);
+
+  const fetchData = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const params = {
+        search: debouncedSearch,
+        status: status || undefined,
+        plan: plan || undefined,
+        subscriptionType: subscriptionType || undefined,
+        _t: Date.now()
+      };
+
+      const [subRes, statsRes] = await Promise.all([
+        adminAPI.getSubscriptions(params),
+        adminAPI.getStats()
+      ]);
+
+      if (!isMountedRef.current) return;
+
+      setSubscriptions(unwrapList(subRes.data));
+      setStats(statsRes.data);
+    } catch (err) {
+      if (isMountedRef.current) {
+        setError("Failed to fetch subscriptions. Please try again.");
+        console.error(err);
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
+    }
+  };
+
+  const clearFilters = () => {
+    setSearchTerm("");
+    setStatus("");
+    setPlan("");
+    setSubscriptionType("");
+  };
+
+  const formatPrice = (plan) => {
+    const prices = { "1year": "₹350", "2year": "₹650", "3year": "₹900", "life": "₹5000" };
+    return prices[plan] || "—";
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case "active": return "bg-green-100 text-green-700 border-green-200";
+      case "expired": return "bg-amber-100 text-amber-700 border-amber-200";
+      case "cancelled": return "bg-red-100 text-red-700 border-red-200";
+      default: return "bg-slate-100 text-slate-600 border-slate-200";
+    }
+  };
+
+  // Edit handlers
+  const openEdit = (sub) => {
+    setEditData({
+      subscriberName: sub.subscriberName || sub.userId?.name || "",
+      email: sub.email || sub.userId?.email || "",
+      mobile: sub.mobile || "",
+      plan: sub.plan || "",
+      subscriptionType: sub.subscriptionType || "",
+      status: sub.status || "",
+      startDate: formatDateInput(sub.startDate),
+      endDate: formatDateInput(sub.endDate),
+    });
+    setEditModal(sub);
+  };
+
+  const handleEditSave = async () => {
+    setEditLoading(true);
+    try {
+      await adminAPI.updateSubscription(editModal._id, editData);
+      setEditModal(null);
+      fetchData();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update subscription. Please try again.");
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  // Delete handlers
+  const handleDelete = async () => {
+    setDeleteLoading(true);
+    try {
+      await adminAPI.deleteSubscription(deleteModal._id);
+      setDeleteModal(null);
+      fetchData();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to delete subscription. Please try again.");
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   return (
     <AdminLayout>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div>
-          <h1 className="text-2xl font-black text-slate-900">Subscriptions</h1>
-          <p className="text-slate-500 text-sm mt-1">Manage user plans and expiry</p>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Subscription Management</h1>
+          <p className="text-slate-500 text-sm mt-1">Industrial standard filtering for active and offline database.</p>
         </div>
-        <button className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition-colors">
-          <Plus size={16} /> Assign Plan
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={fetchData}
+            className="flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold px-4 py-2.5 rounded-xl text-sm transition-all shadow-sm"
+          >
+            <RefreshCw size={16} className={loading ? "animate-spin" : ""} /> Sync
+          </button>
+        </div>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        {[["Premium Users", "1,243", "bg-green-50 border-green-100 text-green-700"], ["Basic Users", "892", "bg-blue-50 border-blue-100 text-blue-700"], ["Free Users", "2,686", "bg-slate-50 border-slate-200 text-slate-600"]].map(([label, val, cls]) => (
-          <div key={label} className={`rounded-2xl border p-5 ${cls}`}>
-            <p className="text-2xl font-black">{val}</p>
-            <p className="text-sm font-medium mt-0.5">{label}</p>
+      {/* Quick Stats Overlay */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8">
+        {[
+          { label: "Active Subscribers", value: stats?.activeSubscriptions || 0, color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-100" },
+          { label: "Total Revenue", value: stats?.totalRevenue ? `₹${(stats.totalRevenue / 100).toLocaleString('en-IN')}` : "₹0", color: "text-violet-600", bg: "bg-violet-50", border: "border-violet-100" },
+          { label: "Offline Pending", value: "0", color: "text-amber-600", bg: "bg-amber-50", border: "border-amber-100" },
+        ].map((item) => (
+          <div key={item.label} className={`rounded-2xl border ${item.bg} ${item.border} p-6 transition-transform hover:scale-[1.02] duration-300`}>
+            <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-1">{item.label}</p>
+            <p className={`text-3xl font-black ${item.color}`}>{item.value}</p>
           </div>
         ))}
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="text-left px-5 py-3 font-semibold text-slate-600">User</th>
-                <th className="text-left px-5 py-3 font-semibold text-slate-600">Plan</th>
-                <th className="text-left px-5 py-3 font-semibold text-slate-600">Start Date</th>
-                <th className="text-left px-5 py-3 font-semibold text-slate-600">End Date</th>
-                <th className="text-right px-5 py-3 font-semibold text-slate-600">Amount</th>
-                <th className="text-left px-5 py-3 font-semibold text-slate-600">Status</th>
-                <th className="text-left px-5 py-3 font-semibold text-slate-600">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {subscriptions.map((sub) => (
-                <tr key={sub.id} className="border-t border-slate-50 hover:bg-slate-50/50">
-                  <td className="px-5 py-4">
-                    <p className="font-semibold text-slate-800">{sub.name}</p>
-                    <p className="text-xs text-slate-400">{sub.email}</p>
-                  </td>
-                  <td className="px-5 py-4">
-                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${sub.plan === "Premium" ? "bg-green-100 text-green-700" : sub.plan === "Basic" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-600"}`}>
-                      {sub.plan}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4 text-slate-500">{sub.start}</td>
-                  <td className="px-5 py-4 text-slate-500">{sub.end}</td>
-                  <td className="px-5 py-4 text-right font-semibold text-slate-900">₹{sub.amount}/mo</td>
-                  <td className="px-5 py-4">
-                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${sub.status === "Active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
-                      {sub.status}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4">
-                    <div className="flex gap-2">
-                      <button className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Edit size={14} /></button>
-                      <button className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors"><RefreshCw size={14} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden mb-8">
+        {/* Advanced Filter Bar */}
+        <div className="p-6 border-b border-slate-50 bg-slate-50/30">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            <div className="relative col-span-1 lg:col-span-1">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+              <input
+                type="text"
+                placeholder="Search name, email, mobile..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-xl py-2.5 pl-11 pr-4 text-sm focus:ring-2 focus:ring-emerald-500 outline-none transition-all font-medium"
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-3 col-span-1 lg:col-span-3">
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider text-slate-600 outline-none focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="">Status: All</option>
+                <option value="active">Active</option>
+                <option value="expired">Expired</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+
+              <select
+                value={plan}
+                onChange={(e) => setPlan(e.target.value)}
+                className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider text-slate-600 outline-none focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="">Plan: All</option>
+                <option value="1year">1 Year</option>
+                <option value="2year">2 Year</option>
+                <option value="3year">3 Year</option>
+                <option value="life">Life Time</option>
+              </select>
+
+              <select
+                value={subscriptionType}
+                onChange={(e) => setSubscriptionType(e.target.value)}
+                className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider text-slate-600 outline-none focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="">Type: All</option>
+                <option value="digital">Digital</option>
+                <option value="print">Print</option>
+              </select>
+
+              {(searchTerm || status || plan || subscriptionType) && (
+                <button
+                  onClick={clearFilters}
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider text-red-500 hover:bg-red-50 transition-all border border-red-100"
+                >
+                  <X size={14} /> Clear
+                </button>
+              )}
+            </div>
+          </div>
         </div>
+
+
+
+
+        {loading ? (
+          <div className="py-32 flex flex-col items-center justify-center text-slate-400 gap-4">
+            <Loader2 size={40} className="animate-spin text-emerald-500" />
+            <p className="font-bold text-sm tracking-widest uppercase">Filtering Metadata...</p>
+          </div>
+        ) : error ? (
+          <div className="py-24 flex flex-col items-center justify-center text-red-500 gap-3">
+            <AlertCircle size={40} />
+            <p className="font-bold">{error}</p>
+            <button onClick={fetchData} className="text-sm underline font-bold mt-2">Try Again</button>
+          </div>
+        ) : subscriptions.length === 0 ? (
+          <div className="py-32 flex flex-col items-center justify-center text-slate-400 gap-3 text-center px-4">
+            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-2">
+              <Filter size={32} />
+            </div>
+            <h3 className="text-slate-900 font-black tracking-tight">No Matching Subscribers</h3>
+            <p className="text-sm max-w-xs">Adjust your search or filter categories to find more results.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50/50 text-[11px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100">
+                  <th className="px-6 py-4">Subscriber</th>
+                  <th className="px-6 py-4">Plan Category</th>
+                  <th className="px-6 py-4">Timeline</th>
+                  <th className="px-6 py-4">Gateway Info</th>
+                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {subscriptions.map((sub) => (
+                  <tr key={sub._id} className="group hover:bg-slate-50/60 transition-colors">
+                    <td className="px-6 py-5">
+                      <p className="font-black text-slate-900 text-sm leading-tight">{sub.subscriberName || sub.userId?.name || "Unknown Business"}</p>
+                      <p className="text-xs text-slate-400 mt-1 font-medium italic">{sub.email || sub.userId?.email}</p>
+                      {sub.mobile && <p className="text-[10px] text-emerald-600 font-bold mt-1.5 flex items-center gap-1.5 underline decoration-emerald-200 decoration-2">📞 {sub.mobile}</p>}
+                    </td>
+                    <td className="px-6 py-5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black px-2.5 py-1 rounded-lg bg-slate-900 text-white uppercase tracking-tighter">
+                          {sub.plan}
+                        </span>
+                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 border rounded-md ${sub.subscriptionType === 'print' ? 'border-amber-200 text-amber-700 bg-amber-50' : 'border-blue-200 text-blue-700 bg-blue-50'}`}>
+                          {sub.subscriptionType}
+                        </span>
+                      </div>
+                      <p className="text-[9px] font-bold text-slate-400 mt-2 uppercase tracking-widest">Est. Value: {formatPrice(sub.plan)}</p>
+                    </td>
+                    <td className="px-6 py-5">
+                      <div className="space-y-1.5 shadow-sm bg-white/50 p-2 rounded-xl border border-slate-100">
+                        <p className="text-[10px] font-bold text-slate-500 flex items-center gap-1.5">
+                          <Clock size={12} className="text-slate-300" />
+                          Starts: {formatDate(sub.startDate)}
+                        </p>
+                        <p className="text-[10px] font-bold text-emerald-600 flex items-center gap-1.5">
+                          <CheckCircle2 size={12} className="text-emerald-300" />
+                          Expiry: {sub.endDate ? formatDate(sub.endDate) : "Perpetual"}
+                        </p>
+                      </div>
+                    </td>
+                    <td className="px-6 py-5">
+                      <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-100 flex flex-col gap-1.5 max-w-[180px]">
+                        <span className="text-[8px] font-black uppercase text-slate-400 leading-none tracking-[0.2em]">Transaction Reference</span>
+                        <code className="text-[10px] font-bold text-slate-700 truncate block">
+                          {sub.paymentId || "OFFLINE_DIRECT"}
+                        </code>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <div className={`w-2 h-2 rounded-full ${sub.paymentMode === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                          <span className="text-[9px] font-black uppercase text-slate-500 tracking-tighter">
+                            {sub.paymentMode || "Legacy"} Gateway
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-5">
+                      <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-wider ${getStatusColor(sub.status)} shadow-sm`}>
+                        {sub.status === 'active' && <CheckCircle2 size={12} />}
+                        {sub.status === 'expired' && <XCircle size={12} />}
+                        {sub.status}
+                      </div>
+                    </td>
+                    <td className="px-6 py-5 text-right">
+                      <div className="flex justify-end gap-1.5">
+                        <button
+                          onClick={() => openEdit(sub)}
+                          className="p-2.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all border border-transparent hover:border-emerald-100"
+                          title="Edit Subscription"
+                        >
+                          <Edit size={16} />
+                        </button>
+                        <button
+                          onClick={() => setDeleteModal(sub)}
+                          className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all border border-transparent hover:border-red-100"
+                          title="Delete Subscription"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
+
+      {/* Edit Modal */}
+      {editModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-5 border-b border-slate-100">
+              <h3 className="text-lg font-black text-slate-900">Edit Subscription</h3>
+              <p className="text-sm text-slate-500 mt-0.5">Update subscriber details and plan information</p>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5 tracking-wide">Subscriber Name</label>
+                <input
+                  type="text"
+                  value={editData.subscriberName}
+                  onChange={(e) => setEditData({ ...editData, subscriberName: e.target.value })}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5 tracking-wide">Email</label>
+                  <input
+                    type="email"
+                    value={editData.email}
+                    onChange={(e) => setEditData({ ...editData, email: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5 tracking-wide">Mobile</label>
+                  <input
+                    type="tel"
+                    value={editData.mobile}
+                    onChange={(e) => {
+                      const digitsOnly = e.target.value.replace(/\D/g, "");
+                      if (digitsOnly.length <= 10) setEditData({ ...editData, mobile: digitsOnly });
+                    }}
+                    maxLength={10}
+                    inputMode="numeric"
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 text-sm"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5 tracking-wide">Plan</label>
+                  <select
+                    value={editData.plan}
+                    onChange={(e) => setEditData({ ...editData, plan: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 text-sm"
+                  >
+                    <option value="1year">1 Year</option>
+                    <option value="2year">2 Year</option>
+                    <option value="3year">3 Year</option>
+                    <option value="life">Life Time</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5 tracking-wide">Type</label>
+                  <select
+                    value={editData.subscriptionType}
+                    onChange={(e) => setEditData({ ...editData, subscriptionType: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 text-sm"
+                  >
+                    <option value="digital">Digital</option>
+                    <option value="print">Print</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5 tracking-wide">Status</label>
+                <select
+                  value={editData.status}
+                  onChange={(e) => setEditData({ ...editData, status: e.target.value })}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 text-sm"
+                >
+                  <option value="active">Active</option>
+                  <option value="expired">Expired</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5 tracking-wide">Start Date</label>
+                  <input
+                    type="date"
+                    value={editData.startDate}
+                    onChange={(e) => setEditData({ ...editData, startDate: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5 tracking-wide">End Date</label>
+                  <input
+                    type="date"
+                    value={editData.endDate}
+                    onChange={(e) => setEditData({ ...editData, endDate: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
+              <button
+                onClick={() => setEditModal(null)}
+                className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditSave}
+                disabled={editLoading}
+                className="px-5 py-2.5 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-xl transition-colors flex items-center gap-2"
+              >
+                {editLoading && <Loader2 size={14} className="animate-spin" />}
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="px-6 py-6 text-center">
+              <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trash2 size={24} className="text-red-600" />
+              </div>
+              <h3 className="text-lg font-black text-slate-900 mb-2">Delete Subscription?</h3>
+              <p className="text-sm text-slate-500">
+                Are you sure you want to delete the subscription for{" "}
+                <span className="font-bold text-slate-700">{deleteModal.subscriberName || deleteModal.userId?.name || "this user"}</span>?
+                This action cannot be undone.
+              </p>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteModal(null)}
+                className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleteLoading}
+                className="px-5 py-2.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-xl transition-colors flex items-center gap-2"
+              >
+                {deleteLoading && <Loader2 size={14} className="animate-spin" />}
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminLayout>
   );
 }

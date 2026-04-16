@@ -2,62 +2,181 @@
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import AdminLayout from "@/components/AdminLayout";
-import { articlesAPI } from "@/lib/api";
+import { articlesAPI, categoriesAPI } from "@/lib/api";
 import { mockArticles } from "@/lib/mockData";
-import { Plus, Edit, Trash2, Eye, Search, Loader2, X, Save, TrendingUp, FileText } from "lucide-react";
+import Link from "next/link";
+import { Plus, Edit, Trash2, Eye, Search, Loader2, X, Save, TrendingUp, FileText, LayoutGrid, FileEdit } from "lucide-react";
+import toast, { Toaster } from "react-hot-toast";
+import RichTextEditor from "@/components/RichTextEditor";
+import MediaExplorer from "@/components/MediaExplorer";
+import { CATEGORY_TREE } from "@/lib/categories";
+
+// Convert static tree to the shape we need: [{label, slug, emoji, children: [{label, slug}]}]
+const staticTree = CATEGORY_TREE.map((p) => ({
+  label: p.label,
+  slug: p.slug,
+  emoji: p.emoji,
+  children: p.children.map((c) => ({ label: c.label, slug: c.slug })),
+}));
 
 function ArticlesContent() {
   const searchParams = useSearchParams();
   const urlCategory = searchParams.get("category");
   const urlTrending = searchParams.get("trending") === "true";
 
+  // Dynamic category tree — fetched from API, fallback to static
+  const [categoryTree, setCategoryTree] = useState(staticTree);
+
+  useEffect(() => {
+    categoriesAPI.getTree().then((res) => {
+      const tree = Array.isArray(res.data) ? res.data : [];
+      if (tree.length > 0) {
+        setCategoryTree(
+          tree.map((p) => ({
+            label: p.name,
+            slug: p.slug,
+            emoji: p.emoji || "📁",
+            children: (p.children || []).map((c) => ({ label: c.name, slug: c.slug })),
+          }))
+        );
+      }
+    }).catch(() => {});
+  }, []);
+
+  const DEFAULT_CATEGORY = categoryTree[0]?.label || CATEGORY_TREE[0].label;
+
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ 
-    title: "", 
-    category: "Sugar Industry News", 
-    excerpt: "", 
-    content: "", 
-    image: "", 
+  const [form, setForm] = useState({
+    id: "",
+    title: "",
+    category: DEFAULT_CATEGORY,
+    subcategory: "",
+    excerpt: "",
+    content: "",
+    image: "",
     premium: false,
-    trending: false 
+    trending: false,
+    status: "published",
   });
   const [saving, setSaving] = useState(false);
+  const [isDrafting, setIsDrafting] = useState(false);
+  const [showMedia, setShowMedia] = useState(false);
+
+  const urlEditParam = searchParams.get("edit");
 
   useEffect(() => {
-    if (urlCategory) {
-      setForm(prev => ({ ...prev, category: urlCategory }));
+    if (!urlCategory) return;
+    // Seed parent + subcategory from URL
+    const parent = categoryTree.find((p) => p.label === urlCategory);
+    if (parent) {
+      setForm((prev) => ({ ...prev, category: parent.label, subcategory: "" }));
+    } else {
+      const match = categoryTree.find((p) =>
+        p.children.some((c) => c.label === urlCategory)
+      );
+      if (match) {
+        setForm((prev) => ({ ...prev, category: match.label, subcategory: urlCategory }));
+      }
     }
-  }, [urlCategory]);
+  }, [urlCategory, categoryTree]);
 
-  useEffect(() => { fetchArticles(); }, []);
+  // Re-fetch whenever the sidebar category (or trending flag) changes so
+  // the list for the selected category / sub-category actually populates.
+  useEffect(() => {
+    fetchArticles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlCategory, urlTrending]);
+
+  useEffect(() => {
+    if (urlEditParam && articles.length > 0) {
+      const articleToEdit = articles.find(a => (a._id === urlEditParam || a.id === urlEditParam));
+      if (articleToEdit) handleEdit(articleToEdit);
+    }
+  }, [urlEditParam, articles]);
+
+  const handleEdit = (article) => {
+    // Resolve parent if only a subcategory label was stored on `category`
+    let parent = article.category || DEFAULT_CATEGORY;
+    let sub = article.subcategory || "";
+    const parentMatch = categoryTree.find((p) => p.label === parent);
+    if (!parentMatch) {
+      const owner = categoryTree.find((p) =>
+        p.children.some((c) => c.label === parent)
+      );
+      if (owner) {
+        sub = sub || parent;
+        parent = owner.label;
+      } else {
+        parent = DEFAULT_CATEGORY;
+      }
+    }
+    setForm({
+      id: article._id || article.id,
+      title: article.title || "",
+      category: parent,
+      subcategory: sub,
+      excerpt: article.excerpt || "",
+      content: article.content || "",
+      image: article.image || article.imageUrl || "",
+      premium: !!article.premium,
+      trending: !!article.trending,
+      status: article.status || "published",
+    });
+    setShowForm(true);
+  };
 
   const fetchArticles = async () => {
     setLoading(true);
     try {
-      const { data } = await articlesAPI.getAll({ limit: 100 });
-      setArticles(data.articles || []);
+      const params = { limit: 100 };
+      if (urlCategory) params.category = urlCategory;
+      const { data } = await articlesAPI.getAll(params);
+      const list = Array.isArray(data?.articles)
+        ? data.articles
+        : Array.isArray(data)
+          ? data
+          : [];
+      setArticles(list);
     } catch {
-      setArticles(mockArticles);
+      // Fallback to mock data, client-filtered by URL category
+      const filteredMock = urlCategory
+        ? mockArticles.filter(
+            (a) => a.category === urlCategory || a.subcategory === urlCategory
+          )
+        : mockArticles;
+      setArticles(filteredMock);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreate = async (e) => {
-    e.preventDefault();
+  const handleCreate = async (e, type = "published") => {
+    if (e) e.preventDefault();
     setSaving(true);
+    if (type === "draft") setIsDrafting(true);
+    
     try {
-      await articlesAPI.create(form);
+      const payload = { ...form, status: type };
+      if (form.id) {
+        await articlesAPI.update(form.id, payload);
+      } else {
+        await articlesAPI.create(payload);
+      }
+      toast.success(type === "draft" ? "Draft saved successfully!" : "Article published successfully!", {
+        style: { borderRadius: '16px', background: '#1e293b', color: '#fff', fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' },
+        iconTheme: { primary: '#22c55e', secondary: '#fff' }
+      });
       setShowForm(false);
-      setForm({ title: "", category: "Sugar Industry News", excerpt: "", content: "", image: "", premium: false, trending: false });
+      setForm({ id: "", title: "", category: DEFAULT_CATEGORY, subcategory: "", excerpt: "", content: "", image: "", premium: false, trending: false, status: "published" });
       fetchArticles();
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to create article");
+      toast.error(err.response?.data?.message || "Failed to save article");
     } finally {
       setSaving(false);
+      setIsDrafting(false);
     }
   };
 
@@ -71,27 +190,29 @@ function ArticlesContent() {
     }
   };
 
-  // Filter based on search bar AND URL params (category/trending)
+  // Server already filters by category. We only apply the local search
+  // box and the trending flag here.
   const filtered = articles.filter((a) => {
     const matchesSearch = a.title?.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory = urlCategory ? a.category === urlCategory : true;
     const matchesTrending = urlTrending ? a.trending === true : true;
+    // Defensive client-side category re-check in case a stale result slips
+    // through (e.g. when the API fallback returns mock data).
+    const matchesCategory = urlCategory
+      ? a.category === urlCategory || a.subcategory === urlCategory
+      : true;
     return matchesSearch && matchesCategory && matchesTrending;
   });
 
-  const categories = [
-    "Sugar Industry News", "Ethanol", "Molasses", "Market Trends", 
-    "Agriculture", "International Trade", "Interviews", "Environmental Impact", 
-    "Technology", "Sugarcane Department", "Sugar Diet", "Sugar Food", "Policy Updates", "Distillery Updates", "News Archive"
-  ];
+  const activeParent = categoryTree.find((p) => p.label === form.category);
+  const subOptions = activeParent?.children || [];
 
   return (
     <>
       <div className="flex items-center justify-between mb-8 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
         <div>
           <h1 className="text-2xl font-black text-slate-900 flex items-center gap-3">
-            {urlTrending ? <TrendingUp className="text-green-500" /> : <FileText className="text-green-500" />}
-            {urlTrending ? "Trending Highlights" : (urlCategory || "Central Article Desk")}
+            {urlTrending ? <TrendingUp className="text-red-500" /> : <FileText className="text-green-500" />}
+            {urlTrending ? "Breaking News" : (urlCategory || "Central Article Desk")}
           </h1>
           <p className="text-slate-500 text-sm mt-1 font-medium italic">
             Managing {urlCategory ? `the "${urlCategory}" segment` : "all editorial content"} • {filtered.length} entries
@@ -115,24 +236,46 @@ function ArticlesContent() {
               </div>
               <button onClick={() => setShowForm(false)} className="w-10 h-10 flex items-center justify-center hover:bg-slate-50 rounded-full text-slate-400 hover:text-slate-900 transition-all border border-transparent hover:border-slate-100"><X size={20} /></button>
             </div>
+            <Toaster position="top-right" />
             
-            <form onSubmit={handleCreate} className="space-y-6">
+            <form onSubmit={(e) => handleCreate(e, "published")} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="md:col-span-2">
-                  <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">Article Headline</label>
+                  <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">Article Headline <span className="text-red-500">*</span></label>
                   <input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })}
                     placeholder="e.g. Maharashtra sugar mills see record production..."
                     className="w-full px-5 py-4 border-2 border-slate-50 rounded-2xl text-sm font-bold focus:outline-none focus:ring-4 focus:ring-green-400/10 focus:border-green-500 bg-slate-50/50 transition-all" />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">Publishing Desk (Category)</label>
-                  <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}
-                    disabled={!!urlCategory}
-                    className="w-full px-5 py-4 border-2 border-slate-50 rounded-2xl text-sm font-bold focus:outline-none focus:ring-4 focus:ring-green-400/10 focus:border-green-500 bg-white shadow-sm disabled:bg-slate-50 disabled:text-slate-400 transition-all appearance-none cursor-pointer">
-                    {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                  <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">Parent Category <span className="text-red-500">*</span></label>
+                  <select
+                    value={form.category}
+                    onChange={(e) => setForm({ ...form, category: e.target.value, subcategory: "" })}
+                    className="w-full px-5 py-4 border-2 border-slate-50 rounded-2xl text-sm font-bold focus:outline-none focus:ring-4 focus:ring-green-400/10 focus:border-green-500 bg-white shadow-sm transition-all appearance-none cursor-pointer"
+                  >
+                    {categoryTree.map((c) => (
+                      <option key={c.slug} value={c.label}>{c.emoji} {c.label}</option>
+                    ))}
                   </select>
-                  {urlCategory && <p className="text-[10px] text-green-600 font-bold uppercase tracking-widest mt-2 ml-1 italic">Locked to this section</p>}
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                    Sub-Category
+                    <span className="text-slate-300 font-bold normal-case tracking-normal ml-2">(optional)</span>
+                  </label>
+                  <select
+                    value={form.subcategory}
+                    onChange={(e) => setForm({ ...form, subcategory: e.target.value })}
+                    disabled={subOptions.length === 0}
+                    className="w-full px-5 py-4 border-2 border-slate-50 rounded-2xl text-sm font-bold focus:outline-none focus:ring-4 focus:ring-green-400/10 focus:border-green-500 bg-white shadow-sm transition-all appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <option value="">— None (Parent only) —</option>
+                    {subOptions.map((s) => (
+                      <option key={s.slug} value={s.label}>{s.label}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="flex items-center gap-6 pt-2">
@@ -145,11 +288,11 @@ function ArticlesContent() {
                   </label>
 
                   <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className={`w-10 h-6 rounded-full relative transition-colors duration-300 ${form.trending ? "bg-green-500" : "bg-slate-200"}`}>
+                    <div className={`w-10 h-6 rounded-full relative transition-colors duration-300 ${form.trending ? "bg-red-600" : "bg-slate-200"}`}>
                        <input type="checkbox" className="hidden" checked={form.trending} onChange={(e) => setForm({ ...form, trending: e.target.checked })} />
                        <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-md ${form.trending ? "left-5" : "left-1"}`}></div>
                     </div>
-                    <span className="text-xs font-black text-green-600 uppercase tracking-widest group-hover:text-green-700">Trending Now</span>
+                    <span className="text-xs font-black text-red-600 uppercase tracking-widest group-hover:text-red-700">Breaking News</span>
                   </label>
                 </div>
               </div>
@@ -160,6 +303,10 @@ function ArticlesContent() {
                   <input value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })}
                     placeholder="https://images.unsplash.com/..."
                     className="flex-1 px-5 py-4 border-2 border-slate-50 rounded-2xl text-sm font-bold focus:outline-none focus:ring-4 focus:ring-green-400/10 focus:border-green-500 bg-slate-50/50 transition-all" />
+                  <button type="button" onClick={() => setShowMedia(true)}
+                    className="px-6 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all flex items-center gap-2">
+                    <LayoutGrid size={16} /> Explorer
+                  </button>
                 </div>
               </div>
 
@@ -171,25 +318,38 @@ function ArticlesContent() {
               </div>
 
               <div>
-                <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">Extended Content</label>
-                <textarea rows={6} required value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })}
+                <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">Extended Content <span className="text-red-500">*</span></label>
+                <RichTextEditor 
+                  value={form.content} 
+                  onChange={(val) => setForm({ ...form, content: val })}
                   placeholder="Paste your full article text here. Use shifts for new lines..."
-                  className="w-full px-5 py-4 border-2 border-slate-50 rounded-2xl text-sm font-bold focus:outline-none focus:ring-4 focus:ring-green-400/10 focus:border-green-500 bg-slate-50/50 transition-all resize-none" />
+                />
               </div>
 
               <div className="flex gap-4 pt-4">
                 <button type="button" onClick={() => setShowForm(false)}
                   className="flex-1 py-4 border-2 border-slate-50 rounded-2xl text-xs font-black uppercase tracking-widest text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-all">Discard</button>
+                <button type="button" disabled={saving} onClick={() => handleCreate(null, "draft")}
+                  className="flex-1 py-4 border-2 border-slate-900 rounded-2xl text-xs font-black uppercase tracking-widest text-slate-900 hover:bg-slate-900 hover:text-white transition-all flex items-center justify-center gap-3 disabled:opacity-40">
+                  {isDrafting ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                  {isDrafting ? "Saving..." : "Save Draft"}
+                </button>
                 <button type="submit" disabled={saving}
                   className="flex-[2] py-4 bg-[#1b5e20] hover:bg-black text-white rounded-2xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-green-900/20 transition-all disabled:opacity-40 active:scale-95">
-                  {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                  {saving ? "Processing..." : (urlCategory ? `Publish to ${urlCategory}` : "Publish Globally")}
+                  {(saving && !isDrafting) ? <Loader2 size={16} className="animate-spin" /> : <FileEdit size={16} />}
+                  {(saving && !isDrafting) ? "Processing..." : (urlCategory ? `Publish to ${urlCategory}` : "Publish Globally")}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      <MediaExplorer 
+        isOpen={showMedia} 
+        onClose={() => setShowMedia(false)} 
+        onSelect={(url) => setForm({ ...form, image: url })} 
+      />
 
       <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
         <div className="p-4 border-b border-slate-100">
@@ -222,20 +382,35 @@ function ArticlesContent() {
                         <p className="font-semibold text-slate-800 line-clamp-1 max-w-xs">{a.title}</p>
                       </div>
                     </td>
-                    <td className="px-5 py-4"><span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded-full">{a.category}</span></td>
+                    <td className="px-5 py-4">
+                      <div className="flex flex-wrap gap-1">
+                        <span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-0.5 rounded-full">{a.category}</span>
+                        {a.subcategory && (
+                          <span className="bg-emerald-50 text-emerald-700 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-emerald-200">{a.subcategory}</span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-5 py-4">
                       <div className="flex flex-col gap-1">
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full w-max ${a.premium ? "bg-slate-900 text-green-400" : "bg-green-100 text-green-700"}`}>
                           {a.premium ? "Premium" : "Free"}
                         </span>
-                        {a.trending && <span className="text-[10px] font-bold text-green-600 uppercase flex items-center gap-1"><TrendingUp size={10} /> Trending</span>}
+                        {a.trending && <span className="text-[10px] font-bold text-red-600 uppercase flex items-center gap-1"><TrendingUp size={10} /> Breaking</span>}
                       </div>
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex gap-2">
-                        <button className="p-1.5 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors"><Eye size={14} /></button>
-                        <button className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Edit size={14} /></button>
-                        <button onClick={() => handleDelete(a._id || a.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={14} /></button>
+                        <Link
+                          href={`/article/${a._id || a.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="View published article"
+                          className="p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 rounded-lg transition-colors inline-flex items-center"
+                        >
+                          <Eye size={14} />
+                        </Link>
+                        <button onClick={() => handleEdit(a)} title="Edit" className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Edit size={14} /></button>
+                        <button onClick={() => handleDelete(a._id || a.id)} title="Delete" className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={14} /></button>
                       </div>
                     </td>
                   </tr>

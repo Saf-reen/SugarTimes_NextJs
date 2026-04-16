@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 
 export default function RootLayout({ children }) {
   const pathname = usePathname();
-  const isTakeoverPage = pathname === "/about";
+  const isTakeoverPage = pathname === "/about" || pathname?.startsWith("/login") || pathname?.startsWith("/register") || pathname?.startsWith("/admin");
 
   return (
     <html lang="en" suppressHydrationWarning>

@@ -2,41 +2,33 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu, X, Search, User, LogOut, ChevronDown, Calendar, ArrowRight } from "lucide-react";
+import { Menu, X, Search, User, ChevronDown, Calendar, ArrowRight, RefreshCw } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { articlesAPI } from "@/lib/api";
+import { articlesAPI, subscriptionsAPI, categoriesAPI } from "@/lib/api";
+import Image from "next/image";
+import { CATEGORY_TREE, categoryHref } from "@/lib/categories";
 
 const FacebookIcon = ({ size }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"></path></svg>);
-const InstagramIcon = ({ size }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg>);
+const LinkedInIcon = ({ size }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg>);
+const TwitterXIcon = ({ size }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.261 5.632 5.903-5.632Zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>);
+const YouTubeIcon = ({ size }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.95-1.96C18.88 4 12 4 12 4s-6.88 0-8.59.46a2.78 2.78 0 0 0-1.95 1.96A29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58A2.78 2.78 0 0 0 3.41 19.6C5.12 20 12 20 12 20s6.88 0 8.59-.46a2.78 2.78 0 0 0 1.95-1.95A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58z"/><polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02" fill="white"/></svg>);
 
-const navLinks = [
-  { label: "HOME", href: "/" },
-  { label: "ABOUT US", href: "/about" },
-  { label: "SUBSCRIBE", href: "/subscription" },
-  {
-    label: "SUGAR INDUSTRY NEWS",
-    href: "/news",
-    dropdown: [
-      { label: "Sugarcane Department", href: "/news?category=Sugarcane+Department" },
-      { label: "Molasses", href: "/news?category=Molasses" },
-      { label: "Market Trends", href: "/news?category=Market+Trends" }
-    ]
-  },
-  { label: "ETHANOL", href: "/news?category=Ethanol" },
-  { label: "किसान", href: "/agriculture" },
-  {
-    label: "HIGHLIGHT",
-    href: "#",
-    dropdown: [
-      { label: "International Trade", href: "/news?category=International+Trade" },
-      { label: "Expert Interviews", href: "/news?category=Interviews" },
-      { label: "Environmental Impact", href: "/news?category=Environmental+Impact" },
-      { label: "Technology", href: "/news?category=Technology" }
-    ]
-  },
-  { label: "VIDEO", href: "/videos" },
-  { label: "CONTACT US", href: "/contact" },
-];
+// Build nav link from API category tree node
+const apiCategoryToNav = (cat) => ({
+  label: cat.name.toUpperCase(),
+  href: categoryHref(cat.name),
+  dropdown: (cat.children || []).map((c) => ({
+    label: c.name,
+    href: categoryHref(c.name),
+  })),
+});
+
+// Fallback: build nav from static CATEGORY_TREE
+const staticCategoryToNav = (cat) => ({
+  label: cat.label.toUpperCase(),
+  href: categoryHref(cat.label),
+  dropdown: cat.children.map((c) => ({ label: c.label, href: categoryHref(c.label) })),
+});
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
@@ -44,6 +36,12 @@ export default function Navbar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [tickerArticles, setTickerArticles] = useState([]);
   const [today, setToday] = useState("");
+  const [subscriptionStatus, setSubscriptionStatus] = useState(null);
+  const [renewalBadge, setRenewalBadge] = useState(null);
+  const [navLinks, setNavLinks] = useState([
+    { label: "HOME", href: "/" },
+    ...CATEGORY_TREE.map(staticCategoryToNav),
+  ]);
   const pathname = usePathname();
   const router = useRouter();
   const { user, isAdmin, logout } = useAuth();
@@ -58,26 +56,79 @@ export default function Navbar() {
   };
 
   useEffect(() => {
-    setToday(new Date().toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    }));
+    const timer = setTimeout(() => {
+      setToday(new Date().toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      }));
+    }, 0);
+
+    // Fetch dynamic categories from API
+    const fetchCategories = async () => {
+      try {
+        const res = await categoriesAPI.getTree();
+        const tree = Array.isArray(res.data) ? res.data : [];
+        if (tree.length > 0) {
+          setNavLinks([
+            { label: "HOME", href: "/" },
+            ...tree.map(apiCategoryToNav),
+          ]);
+        }
+      } catch (err) {
+        // Fallback to static categories already set
+      }
+    };
 
     const fetchTicker = async () => {
       try {
         const res = await articlesAPI.getAll({ limit: 50 });
         const allArticles = Array.isArray(res.data?.articles) ? res.data.articles : (Array.isArray(res.data) ? res.data : []);
-        // Prioritize trending articles, fallback to newest
-        const trending = allArticles.filter(a => a.trending);
-        setTickerArticles(trending.length > 0 ? trending : allArticles.slice(0, 12));
+        const breakingNews = allArticles.filter(a => a.trending);
+        setTickerArticles(breakingNews);
       } catch (err) {
         console.error("Failed to fetch ticker articles", err);
       }
     };
+
+    const fetchSubscriptionStatus = async () => {
+      if (user?.id) {
+        try {
+          const res = await subscriptionsAPI.getByUser(user.id);
+          if (res.data && res.data._id) {
+            const endDate = new Date(res.data.endDate);
+            const today = new Date();
+            const daysLeft = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
+
+            setSubscriptionStatus({
+              hasSubscription: true,
+              endDate,
+              daysLeft,
+            });
+
+            if (daysLeft <= 0) {
+              setRenewalBadge({ type: "expired", text: "Expired", color: "bg-red-500" });
+            } else if (daysLeft <= 30) {
+              setRenewalBadge({ type: "expiring", text: "Expiring Soon", color: "bg-amber-500" });
+            } else {
+              setRenewalBadge({ type: "active", text: "Active", color: "bg-emerald-500" });
+            }
+          } else {
+            setSubscriptionStatus({ hasSubscription: false });
+          }
+        } catch (err) {
+          console.error("Failed to fetch subscription status", err);
+          setSubscriptionStatus({ hasSubscription: false });
+        }
+      }
+    };
+
+    fetchCategories();
     fetchTicker();
-  }, []);
+    fetchSubscriptionStatus();
+    return () => clearTimeout(timer);
+  }, [user]);
 
   const handleLogout = () => {
     logout();
@@ -88,52 +139,47 @@ export default function Navbar() {
     <header className="sticky top-0 z-50 bg-white shadow-md font-sans">
 
       {/* Row 1: Tools & Branding (Centered Logo Layout) */}
-      <div className="max-w-[1400px] mx-auto px-6 py-4 grid grid-cols-3 items-center bg-white border-b border-slate-50 relative h-20">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-2 flex flex-col sm:flex-row items-center justify-between bg-white border-b border-slate-50 relative min-h-[100px] gap-4 sm:gap-0">
 
-        {/* Left: Date Tools */}
-        <div className="flex items-center gap-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+        {/* Left: Date Tools (Hidden on mobile for better space) */}
+        <div className="hidden md:flex items-center gap-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] w-1/3">
           <div className="flex items-center gap-2">
             <Calendar size={14} className="text-green-600" />
             <span className="border-b border-slate-200 pb-0.5">{today}</span>
           </div>
         </div>
 
-        {/* Center: Branding Logo */}
-        <div className="flex justify-center h-full items-center">
-          <Link href="/" className="flex items-center gap-4 transition-all hover:scale-105 active:scale-95 group">
-            <div className="w-14 h-14 bg-[#8bc34a] rounded-full flex items-center justify-center shadow-xl shadow-green-500/20 group-hover:shadow-green-500/40 transition-all">
-              <svg viewBox="0 0 24 24" className="w-9 h-9 text-white fill-none stroke-current stroke-2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 22s-2-5-2-10S12 2 12 2s2 5 2 10-2 10-2 10z"></path>
-                <path d="M10 20s-2-2-2-5 2-5 2-5 2 2 2 5-2 5-2 5z"></path>
-                <path d="M14 20s2-2 2-5-2-5-2-5-2 2-2 5 2 5 2 5z"></path>
-              </svg>
-            </div>
-            <div className="flex flex-col">
-              <div className="flex items-baseline leading-none">
-                <span className="text-[32px] font-black text-[#142129] tracking-tighter">Sugar</span>
-                <span className="text-[32px] font-black text-[#8bc34a] tracking-tighter ml-1.5">Times</span>
-              </div>
-              <span className="text-[11px] font-black tracking-[0.6em] text-[#142129] mt-1 uppercase opacity-80">MAGAZINE</span>
-            </div>
+        <div className="flex justify-center items-center md:w-1/3">
+          <Link href="/" className="transition-all hover:scale-105 active:scale-95">
+            <Image
+              src="/sugar times main logo.png"
+              alt="Sugar Times"
+              width={220}
+              height={80}
+              priority
+              className="h-20 w-auto object-contain"
+            />
           </Link>
         </div>
 
         {/* Right: Socials & Auth */}
-        <div className="flex items-center justify-end gap-8">
-          <div className="hidden sm:flex items-center gap-5 text-slate-600">
-            <a href="https://facebook.com/sugartimes" target="_blank" rel="noopener noreferrer" className="hover:text-green-500 hover:scale-125 transition-all duration-300"><FacebookIcon size={18} /></a>
-            <a href="https://instagram.com/sugartimes" target="_blank" rel="noopener noreferrer" className="hover:text-green-500 hover:scale-125 transition-all duration-300"><InstagramIcon size={18} /></a>
+        <div className="flex items-center justify-center sm:justify-end gap-4 sm:gap-6 md:gap-8 md:w-1/3">
+          <div className="hidden lg:flex items-center gap-4 text-slate-500">
+            <a href="https://www.facebook.com/TheSugarTimes/" target="_blank" rel="noopener noreferrer" title="Facebook" className="hover:text-blue-600 hover:scale-125 transition-all duration-300"><FacebookIcon size={17} /></a>
+            <a href="https://in.linkedin.com/company/sugar-times-magazine" target="_blank" rel="noopener noreferrer" title="LinkedIn" className="hover:text-blue-700 hover:scale-125 transition-all duration-300"><LinkedInIcon size={17} /></a>
+            <a href="https://x.com/SugarTimes" target="_blank" rel="noopener noreferrer" title="Twitter / X" className="hover:text-slate-900 hover:scale-125 transition-all duration-300"><TwitterXIcon size={17} /></a>
+            <a href="https://www.youtube.com/@sugartimesmagazine2346" target="_blank" rel="noopener noreferrer" title="YouTube" className="hover:text-red-600 hover:scale-125 transition-all duration-300"><YouTubeIcon size={17} /></a>
           </div>
 
-          <div className="h-8 w-[1.5px] bg-slate-100 hidden sm:block"></div>
+          <div className="h-8 w-[1.5px] bg-slate-100 hidden lg:block"></div>
 
-          <div className="flex items-center gap-4">
-            {isAdmin && <Link href="/admin/dashboard" className="text-[11px] font-black text-slate-500 uppercase border-b-2 border-green-500 pb-0.5 tracking-wider hover:text-green-600 transition-colors">Admin</Link>}
+          <div className="flex items-center gap-3 sm:gap-4">
+            {isAdmin && <Link href="/admin/dashboard" className="text-[10px] md:text-[11px] font-black text-slate-500 uppercase border-b-2 border-green-500 pb-0.5 tracking-wider hover:text-green-600 transition-colors">Admin</Link>}
             {user ? (
               <div className="relative">
-                <button onClick={() => setUserMenuOpen(!userMenuOpen)} className="flex items-center gap-2.5 text-[11px] font-bold text-slate-700 uppercase tracking-widest bg-slate-50 px-4 py-2 rounded-full border border-slate-100 hover:bg-white hover:shadow-sm transition-all">
+                <button onClick={() => setUserMenuOpen(!userMenuOpen)} className="flex items-center gap-2.5 text-[10px] sm:text-[11px] font-bold text-slate-700 uppercase tracking-widest bg-slate-50 px-3 sm:px-4 py-2 rounded-full border border-slate-100 hover:bg-white hover:shadow-sm transition-all whitespace-nowrap">
                   <User size={14} className="text-green-600" />
-                  {user.name?.split(" ")[0]} <ChevronDown size={12} className={`transition-transform duration-300 ${userMenuOpen ? 'rotate-180' : ''}`} />
+                  <span className="hidden xs:inline">{user.name?.split(" ")[0]}</span> <ChevronDown size={12} className={`transition-transform duration-300 ${userMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {userMenuOpen && (
                   <div className="absolute right-0 top-full mt-4 w-48 bg-white shadow-2xl rounded-2xl py-2 border border-slate-50 z-[999] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
@@ -143,7 +189,7 @@ export default function Navbar() {
                 )}
               </div>
             ) : (
-              <Link href="/login" className="text-[11px] font-bold text-slate-700 uppercase tracking-widest border border-slate-200 px-5 py-2.5 rounded-full hover:bg-[#8bc34a] hover:text-white hover:border-[#8bc34a] transition-all">Login</Link>
+              <Link href="/login" className="text-[10px] md:text-[11px] font-bold text-slate-700 uppercase tracking-widest border border-slate-200 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full hover:bg-[#8bc34a] hover:text-white hover:border-[#8bc34a] transition-all whitespace-nowrap">Login</Link>
             )}
           </div>
         </div>
@@ -153,20 +199,22 @@ export default function Navbar() {
       <div className="bg-[#0b1c13] h-10 flex items-center overflow-hidden border-b border-green-900/30">
         <div className="max-w-[1400px] w-full mx-auto flex items-center h-full">
           <div className="bg-red-600 h-full flex items-center px-4 shrink-0 relative z-20 shadow-[4px_0_10px_rgba(0,0,0,0.3)]">
-            <span className="text-white text-[10px] font-black uppercase tracking-widest whitespace-nowrap animate-pulse">Trending Now</span>
+            <span className="text-white text-[10px] font-black uppercase tracking-widest whitespace-nowrap animate-pulse">Breaking News</span>
           </div>
 
-          <div className="flex-1 overflow-hidden h-full flex items-center relative px-4">
-            <div className="flex whitespace-nowrap animate-ticker group h-full items-center">
-              {tickerArticles.length > 0 ? tickerArticles.concat(tickerArticles).map((article, idx) => (
-                <Link key={`${article._id}-${idx}`} href={`/article/${article._id}`} className="mx-8 text-[11px] font-black text-emerald-100/90 hover:text-green-400 transition-colors uppercase tracking-widest flex items-center gap-3">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.8)]"></span>
-                  {article.title}
-                </Link>
-              )) : (
-                <span className="text-[11px] text-emerald-800 font-bold px-8 uppercase tracking-widest italic">Syncing global sugar markets...</span>
-              )}
-            </div>
+          <div className="flex-1 overflow-hidden h-full flex items-center relative">
+            {tickerArticles.length > 0 ? (
+              <div className="flex whitespace-nowrap animate-ticker group h-full items-center pl-4">
+                {[...new Map(tickerArticles.map(a => [a._id, a])).values()].map((article) => (
+                  <Link key={article._id} href={`/article/${article._id}`} className="mx-8 text-[11px] font-black text-emerald-100/90 hover:text-green-400 transition-colors uppercase tracking-widest flex items-center gap-3 shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.8)]"></span>
+                    {article.title}
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <span className="text-[11px] text-emerald-800 font-bold px-8 uppercase tracking-widest italic">No breaking news at the moment</span>
+            )}
           </div>
         </div>
       </div>
@@ -201,19 +249,36 @@ export default function Navbar() {
           </nav>
         </div>
 
+        {/* Left: Renewal Button (white bg) */}
+        <div className="flex items-center gap-3">
+          {user && subscriptionStatus?.hasSubscription && (
+            <Link href="/renewal" className="hidden sm:flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-800 text-[11px] font-black uppercase tracking-widest px-4 py-2 border border-slate-200 rounded-full transition-all relative group shadow-sm">
+              <RefreshCw size={13} className="text-emerald-600 group-hover:rotate-180 transition-transform duration-500" />
+              Renew
+              {renewalBadge && (
+                <span className={`absolute -top-2 -right-2 ${renewalBadge.color} text-white text-[9px] font-black rounded-full px-2 py-0.5 leading-tight ${renewalBadge.type === "expired" || renewalBadge.type === "expiring" ? "animate-pulse" : ""}`}>
+                  {renewalBadge.text}
+                </span>
+              )}
+            </Link>
+          )}
+        </div>
+
+        {/* Right: Search + Advertise + Subscribe */}
         <div className="flex items-center gap-3">
           <button onClick={() => setSearchOpen(!searchOpen)} className="p-2 text-slate-800 hover:text-green-600 transition-colors">
             <Search size={18} className="stroke-[2.5]" />
           </button>
 
-          <div className="flex items-center gap-3">
-            <Link href="/subscription" className="hidden sm:block bg-green-500 hover:bg-green-600 text-white text-[11px] font-black uppercase tracking-widest px-6 py-2.5 shadow-lg shadow-green-500/20 transition-all rounded-full">
-              Subscribe
-            </Link>
-            <button className="lg:hidden p-2 text-slate-800" onClick={() => setOpen(!open)}>
-              {open ? <X size={24} /> : <Menu size={24} />}
-            </button>
-          </div>
+          <Link href="/advertise" className="hidden sm:block text-[11px] font-black uppercase tracking-widest px-5 py-2 rounded-full border-2 border-slate-800 text-slate-800 hover:bg-slate-800 hover:text-white transition-all">
+            Advertise
+          </Link>
+          <Link href="/subscription" className="hidden sm:block bg-[#e85d26] hover:bg-[#d14e1c] text-white text-[11px] font-black uppercase tracking-widest px-5 py-2 rounded-full shadow-lg shadow-orange-500/20 transition-all">
+            Subscribe
+          </Link>
+          <button className="lg:hidden p-2 text-slate-800" onClick={() => setOpen(!open)}>
+            {open ? <X size={24} /> : <Menu size={24} />}
+          </button>
         </div>
       </div>
 
@@ -253,6 +318,15 @@ export default function Navbar() {
                 )}
               </div>
             ))}
+            <div className="flex flex-col gap-3 pt-4 border-t border-slate-200">
+              <Link href="/advertise" onClick={() => setOpen(false)} className="text-center text-sm font-black uppercase tracking-widest px-5 py-3 rounded-full border-2 border-slate-800 text-slate-800">Advertise</Link>
+              <Link href="/subscription" onClick={() => setOpen(false)} className="text-center text-sm font-black uppercase tracking-widest px-5 py-3 rounded-full bg-[#e85d26] text-white">Subscribe</Link>
+              {user && subscriptionStatus?.hasSubscription && (
+                <Link href="/renewal" onClick={() => setOpen(false)} className="text-center text-sm font-black uppercase tracking-widest px-5 py-3 rounded-full border border-slate-200 bg-white text-slate-800 flex items-center justify-center gap-2">
+                  <RefreshCw size={14} className="text-emerald-600" /> Renew
+                </Link>
+              )}
+            </div>
           </div>
         </div>
       )}

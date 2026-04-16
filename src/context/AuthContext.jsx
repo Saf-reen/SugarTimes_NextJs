@@ -16,16 +16,19 @@ export function AuthProvider({ children }) {
     if (stored && token) {
       const parsed = JSON.parse(stored);
       setUser(parsed);
-      fetchSubscription(parsed.id);
+      fetchSubscription(parsed.id || parsed._id);
     } else {
       setLoading(false);
     }
   }, []);
 
   const fetchSubscription = async (userId) => {
+    if (!userId) { setLoading(false); return; }
     try {
       const { data } = await subscriptionsAPI.getByUser(userId);
-      setSubscription(data?.status !== "none" ? data : null);
+      // Only set subscription if data has a valid _id and is not "none" status
+      const isValid = data && data._id && data.status !== "none";
+      setSubscription(isValid ? data : null);
     } catch {
       setSubscription(null);
     } finally {
@@ -38,7 +41,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem("token", data.token);
     localStorage.setItem("user", JSON.stringify(data.user));
     setUser(data.user);
-    await fetchSubscription(data.user.id);
+    await fetchSubscription(data.user.id || data.user._id);
     return data.user;
   };
 
