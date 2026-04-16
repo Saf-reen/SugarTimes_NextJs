@@ -2,9 +2,21 @@ import Article from "../models/Article.js";
 
 export const getArticles = async (req, res) => {
   try {
-    const { page = 1, limit = 10, category, search } = req.query;
+    const { page = 1, limit = 10, category, subcategory, search } = req.query;
     const filter = {};
-    if (category) filter.category = category;
+    // Match on either parent category OR subcategory so user-facing
+    // /news?category=<label> still finds articles when <label> is a
+    // sub-category (e.g. "Molasses" under "Ethanol").
+    if (category && subcategory) {
+      filter.$and = [
+        { $or: [{ category }, { subcategory: category }] },
+        { subcategory },
+      ];
+    } else if (category) {
+      filter.$or = [{ category }, { subcategory: category }];
+    } else if (subcategory) {
+      filter.subcategory = subcategory;
+    }
     if (search) filter.title = { $regex: search, $options: "i" };
 
     const articles = await Article.find(filter)

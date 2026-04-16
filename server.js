@@ -13,8 +13,12 @@ import adminRoutes from "./routes/adminRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import contactRoutes from "./routes/contactRoutes.js";
 import videoRoutes from "./routes/videoRoutes.js";
+import uploadRoutes from "./routes/uploadRoutes.js";
+import advertisementRoutes from "./routes/advertisementRoutes.js";
+import categoryRoutes from "./routes/categoryRoutes.js";
 
 const app = express();
+app.set("trust proxy", true);
 
 app.use(cors());
 app.use(express.json());
@@ -33,6 +37,9 @@ app.use("/admin", adminRoutes);
 app.use("/payments", paymentRoutes);
 app.use("/contact", contactRoutes);
 app.use("/videos", videoRoutes);
+app.use("/uploads-api", uploadRoutes);
+app.use("/advertisements", advertisementRoutes);
+app.use("/categories", categoryRoutes);
 
 // Health check
 app.get("/", (req, res) => res.json({ message: "Sugartimes API running" }));
