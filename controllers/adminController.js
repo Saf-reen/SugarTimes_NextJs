@@ -18,18 +18,18 @@ export const getDashboardStats = async (req, res) => {
       ]),
       Payment.aggregate([
         { $group: { _id: "$status", count: { $sum: 1 } } }
-      ]),
-      Payment.aggregate([
-        { $group: { _id: null, total: { $sum: "$amount" } } }
       ])
     ]);
+
+    const successfulAmount = payments[0]?.total || 0;
+
     res.json({
       totalUsers: users,
       totalArticles: articles,
       activeSubscriptions: subscriptions,
       totalMagazines: magazines,
-      totalRevenue: payments[0]?.total || 0,
-      totalLedgerAmount: ledgerStats[0]?.total || 0,
+      totalRevenue: successfulAmount,
+      totalLedgerAmount: successfulAmount,
       successfulTxns: paymentStats.find(p => p._id === "success")?.count || 0,
       pendingTxns: paymentStats.find(p => p._id === "pending")?.count || 0,
       failedTxns: paymentStats.find(p => p._id === "failed")?.count || 0,

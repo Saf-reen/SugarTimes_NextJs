@@ -1,22 +1,39 @@
 import Article from "../models/Article.js";
+import Category from "../models/Category.js";
 
 export const getArticles = async (req, res) => {
   try {
     const { page = 1, limit = 10, category, subcategory, search } = req.query;
-    const filter = {};
-    // Match on either parent category OR subcategory so user-facing
-    // /news?category=<label> still finds articles when <label> is a
-    // sub-category (e.g. "Molasses" under "Ethanol").
-    if (category && subcategory) {
-      filter.$and = [
-        { $or: [{ category }, { subcategory: category }] },
-        { subcategory },
-      ];
-    } else if (category) {
-      filter.$or = [{ category }, { subcategory: category }];
+    const filter = { status: { $ne: "draft" } };
+
+    if (category) {
+      // Build a list of all names to match: the category itself + all its
+      // child category names. This way ?category=Ethanol also finds articles
+      // stored with category "Molasses" or "E20 Push" (children of Ethanol).
+      const matchNames = [category];
+
+      // Look up the parent category in DB to find its children
+      const parent = await Category.findOne({ name: category, parent: null });
+      if (parent) {
+        const children = await Category.find({ parent: parent._id });
+        children.forEach((c) => matchNames.push(c.name));
+      }
+
+      if (subcategory) {
+        filter.$and = [
+          { $or: [{ category: { $in: matchNames } }, { subcategory: { $in: matchNames } }] },
+          { subcategory },
+        ];
+      } else {
+        filter.$or = [
+          { category: { $in: matchNames } },
+          { subcategory: { $in: matchNames } },
+        ];
+      }
     } else if (subcategory) {
       filter.subcategory = subcategory;
     }
+
     if (search) filter.title = { $regex: search, $options: "i" };
 
     const articles = await Article.find(filter)

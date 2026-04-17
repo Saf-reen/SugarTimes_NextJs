@@ -14,6 +14,5 @@ const categorySchema = new mongoose.Schema(
 );
 
 categorySchema.index({ parent: 1, order: 1 });
-categorySchema.index({ slug: 1 }, { unique: true });
 
 export default mongoose.model("Category", categorySchema);
