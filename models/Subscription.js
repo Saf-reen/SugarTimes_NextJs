@@ -32,6 +32,8 @@ const subscriptionSchema = new mongoose.Schema(
     designation: String,
     organisation: String,
     address: String,
+    district: String,
+    state: String,
     pincode: String,
     email: String,
     mobile: String,

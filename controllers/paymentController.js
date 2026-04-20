@@ -31,7 +31,7 @@ export const createOrder = async (req, res) => {
 
     // Store a pending payment record in DB
     const payment = await Payment.create({
-      userId: req.user.id,
+      userId: req.user?.id,
       amount: options.amount,
       currency,
       razorpayOrderId: order.id,

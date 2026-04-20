@@ -59,7 +59,9 @@ export const getArticleById = async (req, res) => {
 
 export const createArticle = async (req, res) => {
   try {
-    const article = await Article.create(req.body);
+    const articleData = { ...req.body };
+    if (!articleData.category) articleData.category = "Trending";
+    const article = await Article.create(articleData);
     res.status(201).json(article);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -68,7 +70,12 @@ export const createArticle = async (req, res) => {
 
 export const updateArticle = async (req, res) => {
   try {
-    const article = await Article.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const updateData = { ...req.body };
+    if (!updateData.category && updateData.category !== undefined) {
+      // If they explicitly sent an empty string or null, we still default to Trending
+      if (!updateData.category) updateData.category = "Trending";
+    }
+    const article = await Article.findByIdAndUpdate(req.params.id, updateData, { new: true });
     if (!article) return res.status(404).json({ message: "Article not found" });
     res.json(article);
   } catch (err) {

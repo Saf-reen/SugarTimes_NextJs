@@ -2,7 +2,7 @@ import express from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { uploadFile, getUploadedFiles } from "../controllers/uploadController.js";
+import { uploadFile, getUploadedFiles, hideFile } from "../controllers/uploadController.js";
 import protect from "../middleware/authMiddleware.js";
 import adminOnly from "../middleware/adminMiddleware.js";
 
@@ -28,5 +28,6 @@ const upload = multer({ storage });
 
 router.post("/", protect, adminOnly, upload.single("image"), uploadFile);
 router.get("/", protect, adminOnly, getUploadedFiles);
+router.delete("/:filename", protect, adminOnly, hideFile);
 
 export default router;

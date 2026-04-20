@@ -1,4 +1,8 @@
+import bcrypt from "bcryptjs";
+import crypto from "crypto";
+import User from "../models/User.js";
 import Subscription from "../models/Subscription.js";
+import { sendWelcomeCredentials } from "../utils/notificationService.js";
 
 // Plan durations in days
 const PLAN_DURATION = {
@@ -14,6 +18,7 @@ const PLAN_DURATION = {
 /**
  * POST /subscriptions/create
  * Creates a subscription record after successful payment verification.
+ * Also handles auto-registration for guest users.
  */
 export const createSubscription = async (req, res) => {
   try {
@@ -37,8 +42,41 @@ export const createSubscription = async (req, res) => {
       dateOfPayment,
     } = req.body;
 
-    const userId = req.user.id;
+    let userId = req.user?.id;
+    let generatedPassword = null;
 
+    // ─── 1. Handle Guest Auto-Registration ─────────────────────────────────
+    if (!userId) {
+      if (!email || !subscriberName) {
+        return res.status(400).json({ message: "Email and Name are required for guest checkout." });
+      }
+
+      // Check if user already exists
+      let existingUser = await User.findOne({ email });
+      
+      if (!existingUser) {
+        // Create new account
+        generatedPassword = crypto.randomBytes(4).toString("hex"); // 8 chars
+        const hashed = await bcrypt.hash(generatedPassword, 10);
+        
+        existingUser = await User.create({
+          name: subscriberName,
+          email,
+          mobile: mobile || "",
+          password: hashed,
+          role: "user",
+        });
+        
+        console.log(`Auto-created account for guest: ${email}`);
+      } else {
+        // Link to existing account (if email matches, we assume it's the same person for this flow)
+        console.log(`Linking subscription to existing account: ${email}`);
+      }
+      
+      userId = existingUser._id;
+    }
+
+    // ─── 2. Create Subscription ────────────────────────────────────────────
     const days = PLAN_DURATION[plan];
     if (!days) return res.status(400).json({ message: `Invalid plan: ${plan}` });
 
@@ -73,7 +111,27 @@ export const createSubscription = async (req, res) => {
       dateOfPayment,
     });
 
-    res.status(201).json(subscription);
+    // ─── 3. Send Notifications ─────────────────────────────────────────────
+    if (generatedPassword) {
+      // New user registration - send credentials
+      await sendWelcomeCredentials({
+        name: subscriberName,
+        email,
+        mobile: mobile || "",
+        password: generatedPassword,
+        type: subscriptionType,
+      });
+    } else {
+      // Existing user - potentially send a simple confirmation (TODO)
+      console.log(`Subscription confirmed for existing user: ${email}`);
+    }
+
+    res.status(201).json({
+      success: true,
+      subscription,
+      isNewUser: !!generatedPassword,
+      generatedPassword, // Return password to frontend so it can display on success screen too
+    });
   } catch (err) {
     console.error("Create subscription error:", err);
     res.status(500).json({ message: err.message });
@@ -92,6 +150,25 @@ export const getUserSubscription = async (req, res) => {
       endDate: { $gte: new Date() },
     });
     res.json(subscription || { status: "none" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/**
+ * PUT /subscriptions/:id
+ * Update subscriber profile details (address, district, state, etc.)
+ */
+export const updateSubscription = async (req, res) => {
+  try {
+    const { address, district, state, pincode, mobile, email } = req.body;
+    const subscription = await Subscription.findByIdAndUpdate(
+      req.params.id,
+      { address, district, state, pincode, mobile, email },
+      { new: true }
+    );
+    if (!subscription) return res.status(404).json({ message: "Subscription not found" });
+    res.json(subscription);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

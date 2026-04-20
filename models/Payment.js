@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const paymentSchema = new mongoose.Schema(
   {
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     amount: { type: Number, required: true }, // in paise (Razorpay unit)
     currency: { type: String, default: "INR" },
     // Razorpay fields

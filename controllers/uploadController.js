@@ -16,6 +16,34 @@ export const uploadFile = (req, res) => {
   });
 };
 
+// Moves the file into uploads/articles/archive so it disappears from the
+// Media Explorer gallery but stays reachable at the same /uploads/articles/<name>
+// URL (server.js serves the archive directory as a fallback static root).
+// This keeps images in already-published articles intact.
+export const hideFile = (req, res) => {
+  const { filename } = req.params;
+  const uploadDir = path.join(process.cwd(), "uploads", "articles");
+  const archiveDir = path.join(uploadDir, "archive");
+
+  if (!fs.existsSync(archiveDir)) {
+    fs.mkdirSync(archiveDir, { recursive: true });
+  }
+
+  const oldPath = path.join(uploadDir, filename);
+  const newPath = path.join(archiveDir, filename);
+
+  if (!fs.existsSync(oldPath)) {
+    return res.status(404).json({ message: "File not found" });
+  }
+
+  fs.rename(oldPath, newPath, (err) => {
+    if (err) {
+      return res.status(500).json({ message: "Failed to hide file" });
+    }
+    res.status(200).json({ message: "File hidden from gallery successfully" });
+  });
+};
+
 export const getUploadedFiles = (req, res) => {
   const uploadDir = path.join(process.cwd(), "uploads", "articles");
   
@@ -23,16 +51,19 @@ export const getUploadedFiles = (req, res) => {
     return res.status(200).json({ files: [] });
   }
 
-  fs.readdir(uploadDir, (err, files) => {
+  // Use withFileTypes to filter out directories (like 'archive')
+  fs.readdir(uploadDir, { withFileTypes: true }, (err, entries) => {
     if (err) {
       return res.status(500).json({ message: "Failed to list files" });
     }
 
-    const fileList = files.map(file => ({
-      name: file,
-      url: `${req.protocol}://${req.get("host")}/uploads/articles/${file}`
-    }));
+    const files = entries
+      .filter(entry => entry.isFile())
+      .map(entry => ({
+        name: entry.name,
+        url: `${req.protocol}://${req.get("host")}/uploads/articles/${entry.name}`
+      }));
 
-    res.status(200).json({ files: fileList });
+    res.status(200).json({ files });
   });
 };

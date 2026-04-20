@@ -124,12 +124,19 @@ export const createUser = async (req, res) => {
 export const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, role } = req.body;
+    const { 
+      name, email, role,
+      // Subscription specific fields
+      plan, subscriptionType, startDate, endDate, status, 
+      subscriberName, designation, organisation, address, district, state, pincode, mobile, dateOfBirth, 
+      paymentMode, chequeTransactionNo, dateOfPayment 
+    } = req.body;
 
     if (!name || !email) {
       return res.status(400).json({ message: "Name and email are required" });
     }
 
+    // 1. Update Core User Profile
     const user = await User.findByIdAndUpdate(
       id,
       { name, email, role },
@@ -140,7 +147,49 @@ export const updateUser = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    res.json({ message: "User updated successfully", user });
+    // 2. Sync / Update Associated Subscription
+    // We update/create if any subscription-specific field is provided
+    if (plan || status || endDate) {
+      const subUpdateData = {
+        userId: id,
+        plan, subscriptionType, 
+        startDate: startDate ? new Date(startDate) : undefined, 
+        endDate: endDate ? new Date(endDate) : undefined, 
+        status, 
+        subscriberName: subscriberName || name, // Fallback to user name
+        designation, organisation, address, district, state, pincode, 
+        email: email || user.email, 
+        mobile: mobile || user.mobile,
+        dateOfBirth, 
+        paymentMode, chequeTransactionNo, dateOfPayment
+      };
+
+      // Remove undefined fields to avoid overwriting with null
+      Object.keys(subUpdateData).forEach(key => subUpdateData[key] === undefined && delete subUpdateData[key]);
+
+      const existingSub = await Subscription.findOne({ userId: id });
+      if (existingSub) {
+        await Subscription.findByIdAndUpdate(existingSub._id, subUpdateData);
+      } else {
+        // If no subscription exists, create one with the provided details
+        await Subscription.create(subUpdateData);
+      }
+    }
+
+    res.json({ message: "User and associated subscription updated successfully", user });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/**
+ * Fetch a specific user's subscription details for administrative editing
+ */
+export const getUserSubscription = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const subscription = await Subscription.findOne({ userId });
+    res.json(subscription || null);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

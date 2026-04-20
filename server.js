@@ -25,6 +25,8 @@ app.use(express.json());
 
 // Serve static files from the uploads directory
 const __dirname = path.resolve();
+// Archive fallback: Check the archive folder under the same path prefix
+app.use("/uploads/articles", express.static(path.join(__dirname, "uploads", "articles", "archive")));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Routes

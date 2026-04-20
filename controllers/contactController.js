@@ -46,7 +46,7 @@ export const sendContactEmail = async (req, res) => {
     // Email to Sugar Times inbox (info@sugartimes.co.in)
     await transporter.sendMail({
       from: `"Sugar Times Contact Form" <${process.env.EMAIL_USER}>`,
-      to: "sandalanithinkumar123@gmail.com",
+      to: "info@sugartimes.co.in",
       replyTo: email,
       subject: `[${subjectLabel}] New message from ${fullName}`,
       html: `
