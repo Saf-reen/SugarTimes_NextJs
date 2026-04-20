@@ -161,13 +161,19 @@ export const getUserSubscription = async (req, res) => {
  */
 export const updateSubscription = async (req, res) => {
   try {
-    const { address, district, state, pincode, mobile, email } = req.body;
+    const { subscriberName, address, district, state, pincode, mobile, email } = req.body;
     const subscription = await Subscription.findByIdAndUpdate(
       req.params.id,
-      { address, district, state, pincode, mobile, email },
+      { subscriberName, address, district, state, pincode, mobile, email },
       { new: true }
     );
     if (!subscription) return res.status(404).json({ message: "Subscription not found" });
+
+    // Also sync the master User account name so the dashboard header stays aligned
+    if (subscriberName && subscription.userId) {
+      await User.findByIdAndUpdate(subscription.userId, { name: subscriberName });
+    }
+
     res.json(subscription);
   } catch (err) {
     res.status(500).json({ message: err.message });

@@ -4,6 +4,7 @@ import Subscription from "../models/Subscription.js";
 import Magazine from "../models/Magazine.js";
 import Payment from "../models/Payment.js";
 import Contact from "../models/Contact.js";
+import { razorpay } from "./paymentController.js";
 
 export const getDashboardStats = async (req, res) => {
   try {
@@ -246,6 +247,41 @@ export const getSubscriptions = async (req, res) => {
 
 export const getPayments = async (req, res) => {
   try {
+    // ─── Razorpay Automated Reconciliation ───
+    // Find payments that have been "pending" for more than 10 minutes
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+    const stalePayments = await Payment.find({
+      status: "pending",
+      createdAt: { $lt: tenMinutesAgo }
+    });
+
+    for (const p of stalePayments) {
+      if (p.razorpayOrderId) {
+        try {
+          const order = await razorpay.orders.fetch(p.razorpayOrderId);
+          if (order.status === "paid") {
+            p.status = "success";
+            p.paymentId = p.paymentId || p.razorpayPaymentId || order.receipt;
+          } else {
+            p.status = "failed";
+            p.failureReason = "Payment Timeout / Abandoned";
+            p.failedAt = new Date();
+          }
+        } catch (err) {
+          // If Razorpay gives 404 (order not found) or another error, default to failed
+          p.status = "failed";
+          p.failureReason = "Payment Verification Failed";
+          p.failedAt = new Date();
+        }
+      } else {
+        p.status = "failed";
+        p.failureReason = "Payment Timeout";
+        p.failedAt = new Date();
+      }
+      await p.save();
+    }
+    // ────────────────────────────────────────
+
     const { page = 1, limit = 50, search = "", status } = req.query;
     let query = {};
 

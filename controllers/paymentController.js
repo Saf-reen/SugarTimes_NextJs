@@ -3,7 +3,7 @@ import crypto from "crypto";
 import Payment from "../models/Payment.js";
 
 // Initialise Razorpay instance using env vars (secret stays server-side)
-const razorpay = new Razorpay({
+export const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });

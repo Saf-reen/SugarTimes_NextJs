@@ -3,7 +3,8 @@ import {
   createSubscription, 
   getUserSubscription,
   searchSubscription,
-  renewSubscription
+  renewSubscription,
+  updateSubscription
 } from "../controllers/subscriptionController.js";
 import protect from "../middleware/authMiddleware.js";
 
@@ -13,5 +14,6 @@ router.post("/create", protect, createSubscription);
 router.get("/user/:userId", protect, getUserSubscription);
 router.post("/search", searchSubscription);
 router.post("/renew", renewSubscription);
+router.put("/:id", protect, updateSubscription);
 
 export default router;
