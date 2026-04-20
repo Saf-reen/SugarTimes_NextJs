@@ -10,7 +10,9 @@ import protect from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-router.post("/create", protect, createSubscription);
+// Public: createSubscription auto-registers guest users from name/email in the
+// body and uses `req.user?.id` defensively, so a JWT is not required here.
+router.post("/create", createSubscription);
 router.get("/user/:userId", protect, getUserSubscription);
 router.post("/search", searchSubscription);
 router.post("/renew", renewSubscription);

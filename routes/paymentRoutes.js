@@ -1,16 +1,14 @@
 import express from "express";
 import { createOrder, verifyPayment, handlePaymentFailure } from "../controllers/paymentController.js";
-import protect from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// Create a Razorpay order (returns order_id + key_id to frontend)
-router.post("/create-order", protect, createOrder);
-
-// Verify payment signature after Razorpay checkout completes
-router.post("/verify", protect, verifyPayment);
-
-// Handle payment failure/rejection from Razorpay
+// All three routes must support guest checkout, so they are public. The
+// controllers already use `req.user?.id` defensively and identify payment
+// records by Razorpay's own order_id, which cannot be forged without the
+// server-side key secret used for signature verification.
+router.post("/create-order", createOrder);
+router.post("/verify", verifyPayment);
 router.post("/handle-failure", handlePaymentFailure);
 
 export default router;
