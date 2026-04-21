@@ -57,9 +57,25 @@ export const getArticleById = async (req, res) => {
   }
 };
 
+// Whitelist of fields accepted from the admin form. Any `_id`/`id` etc.
+// would crash findByIdAndUpdate or be rejected by Mongoose strict mode, so
+// we pick explicitly instead of spreading the raw body.
+const ARTICLE_FIELDS = [
+  "title", "slug", "excerpt", "content", "category", "subcategory",
+  "image", "author", "premium", "trending",
+  "showContributor", "contributorName", "contributorBio",
+  "status", "wpId",
+];
+
+const pickArticlePayload = (body) =>
+  ARTICLE_FIELDS.reduce((acc, key) => {
+    if (body[key] !== undefined) acc[key] = body[key];
+    return acc;
+  }, {});
+
 export const createArticle = async (req, res) => {
   try {
-    const articleData = { ...req.body };
+    const articleData = pickArticlePayload(req.body);
     if (!articleData.category) articleData.category = "Trending";
     const article = await Article.create(articleData);
     res.status(201).json(article);
@@ -70,12 +86,13 @@ export const createArticle = async (req, res) => {
 
 export const updateArticle = async (req, res) => {
   try {
-    const updateData = { ...req.body };
-    if (!updateData.category && updateData.category !== undefined) {
-      // If they explicitly sent an empty string or null, we still default to Trending
-      if (!updateData.category) updateData.category = "Trending";
-    }
-    const article = await Article.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    const updateData = pickArticlePayload(req.body);
+    if (updateData.category === "") updateData.category = "Trending";
+    const article = await Article.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true, runValidators: true, strict: false }
+    );
     if (!article) return res.status(404).json({ message: "Article not found" });
     res.json(article);
   } catch (err) {

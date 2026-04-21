@@ -1,69 +1,51 @@
 import path from "path";
 import fs from "fs";
+import cloudinary from "../utils/cloudinary.js";
 
 export const uploadFile = (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: "No file uploaded" });
   }
 
-  // Construct the file URL (assuming the server is running on the same host)
-  const fileUrl = `${req.protocol}://${req.get("host")}/uploads/articles/${req.file.filename}`;
-  
   res.status(200).json({
     message: "File uploaded successfully",
-    url: fileUrl,
-    filename: req.file.filename
+    url: req.file.path,
+    filename: req.file.filename.replace("SugarTimes/articles/", "")
   });
 };
 
-// Moves the file into uploads/articles/archive so it disappears from the
-// Media Explorer gallery but stays reachable at the same /uploads/articles/<name>
-// URL (server.js serves the archive directory as a fallback static root).
-// This keeps images in already-published articles intact.
-export const hideFile = (req, res) => {
+// We use Cloudinary tags to "hide" files from the Media Explorer.
+export const hideFile = async (req, res) => {
   const { filename } = req.params;
-  const uploadDir = path.join(process.cwd(), "uploads", "articles");
-  const archiveDir = path.join(uploadDir, "archive");
-
-  if (!fs.existsSync(archiveDir)) {
-    fs.mkdirSync(archiveDir, { recursive: true });
-  }
-
-  const oldPath = path.join(uploadDir, filename);
-  const newPath = path.join(archiveDir, filename);
-
-  if (!fs.existsSync(oldPath)) {
-    return res.status(404).json({ message: "File not found" });
-  }
-
-  fs.rename(oldPath, newPath, (err) => {
-    if (err) {
-      return res.status(500).json({ message: "Failed to hide file" });
-    }
+  const publicId = `SugarTimes/articles/${filename}`;
+  
+  try {
+    // Add "hidden" tag to the image so it doesn't appear in the gallery
+    await cloudinary.uploader.add_tag("hidden", [publicId]);
     res.status(200).json({ message: "File hidden from gallery successfully" });
-  });
+  } catch (error) {
+    console.error("Cloudinary Hide Error:", error);
+    res.status(500).json({ message: "Failed to hide file" });
+  }
 };
 
-export const getUploadedFiles = (req, res) => {
-  const uploadDir = path.join(process.cwd(), "uploads", "articles");
-  
-  if (!fs.existsSync(uploadDir)) {
-    return res.status(200).json({ files: [] });
-  }
+export const getUploadedFiles = async (req, res) => {
+  try {
+    // Search for resources in the folder, excluding those with the "hidden" tag
+    const result = await cloudinary.search
+      .expression('folder:"SugarTimes/articles" AND NOT tags:hidden')
+      .sort_by('created_at', 'desc')
+      .max_results(500)
+      .execute();
 
-  // Use withFileTypes to filter out directories (like 'archive')
-  fs.readdir(uploadDir, { withFileTypes: true }, (err, entries) => {
-    if (err) {
-      return res.status(500).json({ message: "Failed to list files" });
-    }
-
-    const files = entries
-      .filter(entry => entry.isFile())
-      .map(entry => ({
-        name: entry.name,
-        url: `${req.protocol}://${req.get("host")}/uploads/articles/${entry.name}`
-      }));
+    const files = result.resources.map((resource) => ({
+      name: resource.public_id.replace("SugarTimes/articles/", ""),
+      url: resource.secure_url
+    }));
 
     res.status(200).json({ files });
-  });
+  } catch (error) {
+    console.error("Cloudinary Search Error:", error);
+    res.status(500).json({ message: "Failed to list files" });
+  }
 };

@@ -2,6 +2,7 @@ import Magazine from "../models/Magazine.js";
 import Subscription from "../models/Subscription.js";
 import path from "path";
 import fs from "fs";
+import cloudinary from "../utils/cloudinary.js";
 
 export const getMagazines = async (req, res) => {
   try {
@@ -31,18 +32,16 @@ export const createMagazine = async (req, res) => {
       return res.status(400).json({ message: "Title is required" });
     }
 
-    let fileUrl = null;
-    let coverImage = null;
+    let fileUrl = req.body.fileUrl || null;
+    let coverImage = req.body.coverImage || null;
 
     // Multer populates req.files if files are uploaded
     if (req.files) {
       if (req.files.file && req.files.file.length > 0) {
-        // Construct public URL for the PDF
-        fileUrl = `/uploads/magazines/${req.files.file[0].filename}`;
+        fileUrl = req.files.file[0].path; // Cloudinary returns full URL in path
       }
       if (req.files.cover && req.files.cover.length > 0) {
-        // Construct public URL for the cover image
-        coverImage = `/uploads/magazines/${req.files.cover[0].filename}`;
+        coverImage = req.files.cover[0].path;
       }
     }
 
@@ -65,14 +64,32 @@ export const deleteMagazine = async (req, res) => {
     const magazine = await Magazine.findByIdAndDelete(req.params.id);
     if (!magazine) return res.status(404).json({ message: "Magazine not found" });
 
-    // Try to delete associated files from disk to clean up
+    // Try to delete associated files from disk/cloud to clean up
     if (magazine.fileUrl) {
-      const filePath = path.join(process.cwd(), magazine.fileUrl);
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      if (!magazine.fileUrl.startsWith("http")) {
+        const filePath = path.join(process.cwd(), magazine.fileUrl);
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      } else if (magazine.fileUrl.includes("cloudinary.com") && magazine.fileUrl.includes("SugarTimes/magazines/")) {
+        const parts = magazine.fileUrl.split("SugarTimes/magazines/");
+        if (parts[1]) {
+          const publicId = "SugarTimes/magazines/" + parts[1].split(".")[0];
+          await cloudinary.uploader.destroy(publicId, { resource_type: "raw" }).catch(() => {});
+          await cloudinary.uploader.destroy(publicId, { resource_type: "image" }).catch(() => {});
+        }
+      }
     }
+    
     if (magazine.coverImage) {
-      const coverPath = path.join(process.cwd(), magazine.coverImage);
-      if (fs.existsSync(coverPath)) fs.unlinkSync(coverPath);
+      if (!magazine.coverImage.startsWith("http")) {
+        const coverPath = path.join(process.cwd(), magazine.coverImage);
+        if (fs.existsSync(coverPath)) fs.unlinkSync(coverPath);
+      } else if (magazine.coverImage.includes("cloudinary.com") && magazine.coverImage.includes("SugarTimes/magazines/")) {
+        const parts = magazine.coverImage.split("SugarTimes/magazines/");
+        if (parts[1]) {
+          const publicId = "SugarTimes/magazines/" + parts[1].split(".")[0];
+          await cloudinary.uploader.destroy(publicId, { resource_type: "image" }).catch(() => {});
+        }
+      }
     }
 
     res.json({ message: "Magazine deleted successfully" });

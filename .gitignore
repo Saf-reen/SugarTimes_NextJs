@@ -1,0 +1,7 @@
+node_modules/
+.env
+uploads/
+debug_output.txt
+backend_dev_output.txt
+*.log
+.DS_Store
