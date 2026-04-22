@@ -3,38 +3,71 @@ import Category from "../models/Category.js";
 
 export const getArticles = async (req, res) => {
   try {
-    const { page = 1, limit = 10, category, subcategory, search } = req.query;
-    const filter = { status: { $ne: "draft" } };
+    const { page = 1, limit = 10, category, subcategory, search, admin } = req.query;
+    const filter = {};
+
+    // For non-admin/public view, exclude drafts
+    if (admin !== "true") {
+      filter.status = { $ne: "draft" };
+    }
+
+    // Default taxonomy fallback — labels MUST match categories.js exactly
+    // Added synonyms (Market Industry, Sugar Industry News, etc.) to capture legacy data.
+    const CATEGORY_MAP = {
+      "Sugar Industry":        ["Sugar Mill News", "Policy", "Sugarcane Dept.", "Sugar Prices", "Sugar Industry News"],
+      "Ethanol":               ["Blending News", "Distillery Projects", "ENA Trade", "Biofuel Policy", "Molasses", "E20 Push"],
+      "Farmer / किसान":        ["SAP / FRP Rates", "Cane Farming", "AgriTech", "Hindi News", "Agriculture"],
+      "Market & Prices":       ["Market Trends", "Market Rates", "International Trade", "Export / Import", "Market Industry"],
+      "Technology":            ["Research & Development", "Conferences", "Interviews"],
+      "Jaggery & Food":        ["Jaggery / Gur", "Sugar & Health", "Food Industry", "Lifestyle"],
+    };
 
     if (category) {
       // Build a list of all names to match: the category itself + all its
-      // child category names. This way ?category=Ethanol also finds articles
-      // stored with category "Molasses" or "E20 Push" (children of Ethanol).
-      const matchNames = [category];
+      // child category names.
+      let matchNames = [category];
 
-      // Look up the parent category in DB to find its children
-      const parent = await Category.findOne({ name: category, parent: null });
-      if (parent) {
-        const children = await Category.find({ parent: parent._id });
+      // 1. Check DB for children
+      const parentDoc = await Category.findOne({ name: category, parent: null });
+      if (parentDoc) {
+        const children = await Category.find({ parent: parentDoc._id });
         children.forEach((c) => matchNames.push(c.name));
+      } else {
+        // 2. Fallback to hardcoded map — Case Insensitive search
+        const foundKey = Object.keys(CATEGORY_MAP).find(
+          (k) => k.toLowerCase() === category.toLowerCase()
+        );
+        if (foundKey) {
+          matchNames = [foundKey, ...CATEGORY_MAP[foundKey]];
+        }
       }
+
+      // Combine names into a single regex for robust matching (handles variations in & vs &amp; etc)
+      const pattern = matchNames.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+      const regexFilter = { $regex: `^(${pattern})$`, $options: "i" };
 
       if (subcategory) {
         filter.$and = [
-          { $or: [{ category: { $in: matchNames } }, { subcategory: { $in: matchNames } }] },
-          { subcategory },
+          { $or: [{ category: regexFilter }, { subcategory: regexFilter }] },
+          { subcategory: { $regex: `^${subcategory.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" } },
         ];
       } else {
         filter.$or = [
-          { category: { $in: matchNames } },
-          { subcategory: { $in: matchNames } },
+          { category: regexFilter },
+          { subcategory: regexFilter },
         ];
       }
     } else if (subcategory) {
-      filter.subcategory = subcategory;
+      filter.subcategory = { $regex: `^${subcategory.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" };
     }
 
     if (search) filter.title = { $regex: search, $options: "i" };
+
+    // DEBUG: log the filter to see what's being queried
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[Articles] category param:", category);
+      console.log("[Articles] filter:", JSON.stringify(filter, null, 2));
+    }
 
     const articles = await Article.find(filter)
       .sort({ createdAt: -1 })
