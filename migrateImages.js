@@ -1,14 +1,3 @@
-/**
- * WordPress Images → Cloudinary Migration
- *
- * Downloads featured images from sugartimes.co.in, compresses them,
- * uploads to Cloudinary, and updates MongoDB article records.
- *
- * Usage:  node migrateImages.js                  (page 1 = first 100 posts)
- *         node migrateImages.js --page=2          (specific WP page)
- *         node migrateImages.js --all             (all pages)
- *         node migrateImages.js --dry-run         (preview without uploading)
- */
 import "dotenv/config";
 import { v2 as cloudinary } from "cloudinary";
 import connectDB from "./config/db.js";
@@ -21,11 +10,8 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-/* ── Settings ──────────────────────────────────────────────────────────── */
 const WP_DOMAIN = "sugartimes.co.in";
 const CLOUDINARY_FOLDER = "sugartimes/articles";
-// Cloudinary transformation: resize to max 800px wide, auto quality, webp
-// This keeps images small for free tier (~50-80KB each instead of 200-500KB)
 const UPLOAD_OPTIONS = {
   folder: CLOUDINARY_FOLDER,
   transformation: [
@@ -34,19 +20,9 @@ const UPLOAD_OPTIONS = {
     { fetch_format: "auto" },
   ],
   resource_type: "image",
-  overwrite: false,
-  unique_filename: true,
 };
 
 /* ── Helpers ───────────────────────────────────────────────────────────── */
-function isWordPressImage(url) {
-  return url && url.includes(WP_DOMAIN);
-}
-
-function isCloudinaryImage(url) {
-  return url && url.includes("cloudinary.com");
-}
-
 async function uploadToCloudinary(imageUrl, publicId) {
   try {
     const result = await cloudinary.uploader.upload(imageUrl, {
@@ -55,119 +31,122 @@ async function uploadToCloudinary(imageUrl, publicId) {
     });
     return result.secure_url;
   } catch (err) {
-    throw new Error(`Cloudinary upload failed: ${err.message}`);
+    console.error(`  ⚠️ Cloudinary upload failed for ${imageUrl}: ${err.message}`);
+    return imageUrl;
   }
 }
 
-function makePublicId(article) {
-  // Create a clean public ID from slug or wpId
-  const base = article.slug || `wp-${article.wpId}` || article._id.toString();
-  return base.slice(0, 80).replace(/[^a-zA-Z0-9_-]/g, "-");
+async function migrateContentImages(content, article) {
+  if (!content) return content;
+  const imgRegex = /<img[^>]+src="([^">]+)"/g;
+  let newContent = content;
+  const matches = [...content.matchAll(imgRegex)];
+  let changed = false;
+
+  for (let i = 0; i < matches.length; i++) {
+    const originalUrl = matches[i][1];
+    if (originalUrl.includes(WP_DOMAIN) && !originalUrl.includes("cloudinary.com")) {
+      const publicId = `content-${article.slug || article.wpId || article._id}-${i}`;
+      console.log(`    🖼️ Migrating content image ${i+1}/${matches.length}...`);
+      const newUrl = await uploadToCloudinary(originalUrl, publicId);
+      if (newUrl !== originalUrl) {
+        newContent = newContent.replace(originalUrl, newUrl);
+        changed = true;
+      }
+    }
+  }
+  return { newContent, changed };
 }
 
 /* ── Main ──────────────────────────────────────────────────────────────── */
-async function migrate() {
+async function cleanup() {
   const args = process.argv.slice(2);
   const dryRun = args.includes("--dry-run");
-  const doAll = args.includes("--all");
-  const pageArg = args.find((a) => a.startsWith("--page="));
-  const targetPage = pageArg ? parseInt(pageArg.split("=")[1], 10) : 1;
 
   await connectDB();
 
-  // Find articles with WordPress image URLs (not yet migrated to Cloudinary)
+  // Find articles that still have WordPress URLs in either 'image' or 'content'
   const filter = {
-    image: { $regex: WP_DOMAIN, $options: "i" },
+    $or: [
+      { image: { $regex: WP_DOMAIN, $options: "i" } },
+      { content: { $regex: WP_DOMAIN, $options: "i" } },
+    ],
   };
 
   const totalCount = await Article.countDocuments(filter);
-  console.log(`\n📊 Found ${totalCount} articles with WordPress images\n`);
+  console.log(`\n📊 Found ${totalCount} articles with WordPress images needing migration\n`);
 
   if (totalCount === 0) {
     console.log("✅ All images already migrated to Cloudinary!");
     process.exit(0);
   }
 
-  // Process in batches of 100 (matching WP pages)
-  const batchSize = 100;
-  const totalBatches = Math.ceil(totalCount / batchSize);
-  const startBatch = doAll ? 1 : targetPage;
-  const endBatch = doAll ? totalBatches : targetPage;
+  const articles = await Article.find(filter).sort({ createdAt: -1 });
 
   let migrated = 0;
-  let skipped = 0;
   let failed = 0;
 
-  for (let batch = startBatch; batch <= endBatch; batch++) {
-    const skip = (batch - 1) * batchSize;
-    const articles = await Article.find(filter)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(batchSize);
+  for (let i = 0; i < articles.length; i++) {
+    const article = articles[i];
+    const progress = `[${i + 1}/${articles.length}]`;
+    let updates = {};
+    let needsUpdate = false;
 
-    if (articles.length === 0) break;
+    console.log(`${progress} Checking: ${article.title?.slice(0, 50)}...`);
 
-    console.log(`📄 Batch ${batch}/${endBatch} — ${articles.length} articles`);
-
-    for (let i = 0; i < articles.length; i++) {
-      const article = articles[i];
-      const imageUrl = article.image;
-
-      // Skip if already Cloudinary or not WordPress
-      if (isCloudinaryImage(imageUrl) || !isWordPressImage(imageUrl)) {
-        skipped++;
-        continue;
-      }
-
-      const publicId = makePublicId(article);
-      const progress = `[${i + 1}/${articles.length}]`;
-
+    // 1. Check Featured Image
+    if (article.image && article.image.includes(WP_DOMAIN) && !article.image.includes("cloudinary.com")) {
       if (dryRun) {
-        console.log(`  ${progress} [DRY] ${article.title?.slice(0, 50)}`);
-        console.log(`         FROM: ${imageUrl.slice(0, 80)}...`);
-        console.log(`         TO:   ${CLOUDINARY_FOLDER}/${publicId}`);
-        migrated++;
-        continue;
-      }
-
-      try {
-        // Upload directly from URL — Cloudinary downloads, compresses, stores
-        const cloudinaryUrl = await uploadToCloudinary(imageUrl, publicId);
-
-        // Update MongoDB
-        await Article.findByIdAndUpdate(article._id, { image: cloudinaryUrl });
-
-        migrated++;
-        console.log(`  ${progress} ✓ ${article.title?.slice(0, 45)} → ${(cloudinaryUrl.length > 60 ? cloudinaryUrl.slice(0, 60) + "..." : cloudinaryUrl)}`);
-      } catch (err) {
-        failed++;
-        console.error(`  ${progress} ✗ ${article.title?.slice(0, 45)} — ${err.message}`);
-      }
-
-      // Small delay to respect Cloudinary rate limits (free tier: 500/hr)
-      if (i < articles.length - 1) {
-        await new Promise((r) => setTimeout(r, 300));
+        console.log(`  📸 [DRY] Would migrate featured image`);
+      } else {
+        console.log(`  📸 Migrating featured image...`);
+        const publicId = `featured-${article.slug || article.wpId || article._id}`;
+        const newUrl = await uploadToCloudinary(article.image, publicId);
+        if (newUrl !== article.image) {
+          updates.image = newUrl;
+          needsUpdate = true;
+        }
       }
     }
 
-    console.log(`  ✓ Batch ${batch} done (migrated: ${migrated}, skipped: ${skipped}, failed: ${failed})\n`);
+    // 2. Check Content Images
+    if (article.content && article.content.includes(WP_DOMAIN) && !article.content.includes("cloudinary.com")) {
+      if (dryRun) {
+        console.log(`  🖼️ [DRY] Would migrate content images`);
+      } else {
+        const { newContent, changed } = await migrateContentImages(article.content, article);
+        if (changed) {
+          updates.content = newContent;
+          needsUpdate = true;
+        }
+      }
+    }
+
+    if (needsUpdate && !dryRun) {
+      try {
+        await Article.findByIdAndUpdate(article._id, updates);
+        migrated++;
+        console.log(`  ✓ Updated record`);
+      } catch (err) {
+        failed++;
+        console.error(`  ✗ Failed to update: ${err.message}`);
+      }
+    } else if (!dryRun && !needsUpdate) {
+      console.log(`  ⏭️ No WordPress images found in relevant fields`);
+    }
+
+    // Small delay to respect rate limits
+    if (i < articles.length - 1) {
+      await new Promise((r) => setTimeout(r, 200));
+    }
   }
 
-  console.log(`
-═══════════════════════════════════════════════
-  Image Migration Complete${dryRun ? " (DRY RUN)" : ""}
-═══════════════════════════════════════════════
-  ✅ Uploaded:  ${migrated}
-  ⏭️  Skipped:   ${skipped}
-  ❌ Failed:    ${failed}
-  📊 Total:     ${migrated + skipped + failed}
-═══════════════════════════════════════════════
-`);
-
+  console.log(`\n═══════════════════════════════════════════════\n  Cleanup Complete${dryRun ? " (DRY RUN)" : ""}\n═══════════════════════════════════════════════\n  ✅ Updated:   ${migrated}\n  ❌ Failed:    ${failed}\n═══════════════════════════════════════════════\n`);
   process.exit(0);
 }
 
-migrate().catch((err) => {
-  console.error("Image migration failed:", err);
+cleanup().catch((err) => {
+  console.error("Cleanup failed:", err);
   process.exit(1);
 });
+

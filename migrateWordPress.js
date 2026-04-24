@@ -1,32 +1,33 @@
-/**
- * WordPress → Sugar Times Migration Script
- *
- * Fetches all posts from sugartimes.co.in WordPress REST API and inserts
- * them into the MongoDB Article collection. Safe to re-run — uses wpId
- * for deduplication (skips already-migrated posts).
- *
- * Usage:  node migrateWordPress.js
- * Flags:  --dry-run    Print stats without writing to DB
- *         --limit=N    Only migrate N posts (for testing)
- */
 import "dotenv/config";
+import { v2 as cloudinary } from "cloudinary";
 import connectDB from "./config/db.js";
 import Article from "./models/Article.js";
 
 const WP_BASE = "https://sugartimes.co.in/wp-json/wp/v2";
+const WP_DOMAIN = "sugartimes.co.in";
 const PER_PAGE = 100;
+
+/* ── Cloudinary config ─────────────────────────────────────────────────── */
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+const CLOUDINARY_FOLDER = "sugartimes/articles";
+const UPLOAD_OPTIONS = {
+  folder: CLOUDINARY_FOLDER,
+  transformation: [
+    { width: 800, crop: "limit" },
+    { quality: "auto:low" },
+    { fetch_format: "auto" },
+  ],
+  resource_type: "image",
+};
 
 /* ═══════════════════════════════════════════════════════════════════════════
    CATEGORY MAPPING — WordPress category IDs → our parent/subcategory names
    ═══════════════════════════════════════════════════════════════════════════ */
-// Our 6 parents:
-// 1. Sugar Industry → Sugar Mill News, Policy, Sugarcane Dept., Sugar Prices
-// 2. Ethanol → Blending News, Distillery Projects, ENA Trade, Biofuel Policy, Molasses, E20 Push
-// 3. Farmer / किसान → SAP / FRP Rates, Cane Farming, AgriTech, Hindi News
-// 4. Market & Prices → Market Trends, International Trade, Export / Import
-// 5. Technology → Research & Development, Conferences, Interviews
-// 6. Jaggery & Food → Jaggery / Gur, Sugar & Health, Food Industry, Lifestyle
-
 const WP_CATEGORY_MAP = {
   // ── Sugar Industry ──────────────────────────────────────────────────────
   2623: { parent: "Sugar Industry", sub: "Sugar Mill News" },    // Sugar Industry News (827)
@@ -135,16 +136,13 @@ const WP_CATEGORY_MAP = {
   24226: { parent: "Technology", sub: "" },                      // gas turbine generators (1)
 };
 
-// Default for unmapped WP categories
 const DEFAULT_CATEGORY = { parent: "Sugar Industry", sub: "" };
 
 function resolveCategory(wpCategoryIds) {
-  // Try each WP category ID and pick the most specific match
   let best = null;
   for (const id of wpCategoryIds) {
     const mapped = WP_CATEGORY_MAP[id];
     if (mapped) {
-      // Prefer matches that have a subcategory
       if (!best || (mapped.sub && !best.sub)) {
         best = mapped;
       }
@@ -154,7 +152,7 @@ function resolveCategory(wpCategoryIds) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   FETCH HELPERS
+   HELPERS
    ═══════════════════════════════════════════════════════════════════════════ */
 async function fetchJSON(url) {
   const res = await fetch(url);
@@ -188,6 +186,41 @@ function decodeHtmlEntities(str) {
     .replace(/&hellip;/g, "…");
 }
 
+async function uploadToCloudinary(imageUrl, publicId) {
+  try {
+    const result = await cloudinary.uploader.upload(imageUrl, {
+      ...UPLOAD_OPTIONS,
+      public_id: publicId,
+    });
+    return result.secure_url;
+  } catch (err) {
+    console.error(`  ⚠️ Cloudinary upload failed for ${imageUrl}: ${err.message}`);
+    return imageUrl; // Fallback to original URL
+  }
+}
+
+async function migrateContentImages(content, postSlug, postId) {
+  if (!content) return "";
+  
+  // Find all image tags
+  const imgRegex = /<img[^>]+src="([^">]+)"/g;
+  let match;
+  let newContent = content;
+  const matches = [...content.matchAll(imgRegex)];
+  
+  for (let i = 0; i < matches.length; i++) {
+    const originalUrl = matches[i][1];
+    if (originalUrl.includes(WP_DOMAIN) && !originalUrl.includes("cloudinary.com")) {
+      const publicId = `content-${postSlug || postId}-${i}`;
+      console.log(`    🖼️ Migrating content image ${i+1}/${matches.length}...`);
+      const newUrl = await uploadToCloudinary(originalUrl, publicId);
+      newContent = newContent.replace(originalUrl, newUrl);
+    }
+  }
+  
+  return newContent;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    MAIN MIGRATION
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -199,14 +232,13 @@ async function migrate() {
 
   await connectDB();
 
-  // Get total post count
   const headRes = await fetch(`${WP_BASE}/posts?per_page=1&page=1`);
   const totalPosts = parseInt(headRes.headers.get("X-WP-Total"), 10) || 0;
   const totalPages = parseInt(headRes.headers.get("X-WP-TotalPages"), 10) || 0;
   console.log(`\n📊 WordPress site has ${totalPosts} posts across ${totalPages} pages\n`);
 
   const postsToMigrate = Math.min(totalPosts, maxPosts);
-  const pagesToFetch = Math.min(Math.ceil(postsToMigrate / PER_PAGE), totalPages);
+  const pagesToFetch = Math.ceil(postsToMigrate / PER_PAGE);
 
   let migrated = 0;
   let skipped = 0;
@@ -217,9 +249,7 @@ async function migrate() {
 
     let posts;
     try {
-      posts = await fetchJSON(
-        `${WP_BASE}/posts?per_page=${PER_PAGE}&page=${page}&_embed`
-      );
+      posts = await fetchJSON(`${WP_BASE}/posts?per_page=${PER_PAGE}&page=${page}&_embed`);
     } catch (err) {
       console.error(`  ✗ Failed to fetch page ${page}: ${err.message}`);
       failed += PER_PAGE;
@@ -230,31 +260,37 @@ async function migrate() {
       if (migrated + skipped >= postsToMigrate) break;
 
       try {
-        // Check if already migrated
         const exists = await Article.findOne({ wpId: post.id });
         if (exists) {
           skipped++;
           continue;
         }
 
-        // Resolve category
         const { parent, sub } = resolveCategory(post.categories || []);
 
-        // Get featured image URL from embedded data
+        // 1. Handle Featured Image
         let imageUrl = "";
         try {
           const media = post._embedded?.["wp:featuredmedia"]?.[0];
           imageUrl = media?.source_url || "";
-        } catch {
-          imageUrl = "";
+        } catch { imageUrl = ""; }
+
+        if (!dryRun && imageUrl && imageUrl.includes(WP_DOMAIN)) {
+          console.log(`  📸 Uploading featured image for: ${post.title.rendered.slice(0, 30)}...`);
+          imageUrl = await uploadToCloudinary(imageUrl, `featured-${post.slug || post.id}`);
         }
 
-        // Build article document
+        // 2. Handle Content Images
+        let content = post.content?.rendered || "";
+        if (!dryRun) {
+          content = await migrateContentImages(content, post.slug, post.id);
+        }
+
         const article = {
           title: decodeHtmlEntities(post.title?.rendered || "Untitled"),
           slug: post.slug || "",
           excerpt: stripHtml(post.excerpt?.rendered || ""),
-          content: post.content?.rendered || "",
+          content: content,
           category: parent,
           subcategory: sub,
           image: imageUrl,
@@ -268,7 +304,7 @@ async function migrate() {
         };
 
         if (dryRun) {
-          console.log(`  → [DRY] ${article.title.slice(0, 60)} → ${parent}${sub ? " > " + sub : ""}`);
+          console.log(`  → [DRY] ${article.title.slice(0, 60)}`);
         } else {
           await Article.create(article);
         }
@@ -280,24 +316,10 @@ async function migrate() {
     }
 
     console.log(`  ✓ Page ${page} done (migrated: ${migrated}, skipped: ${skipped}, failed: ${failed})`);
-
-    // Small delay to not overload the WordPress server
-    if (page < pagesToFetch) {
-      await new Promise((r) => setTimeout(r, 500));
-    }
+    if (page < pagesToFetch) await new Promise((r) => setTimeout(r, 500));
   }
 
-  console.log(`
-═══════════════════════════════════════════════
-  Migration Complete${dryRun ? " (DRY RUN)" : ""}
-═══════════════════════════════════════════════
-  ✅ Migrated:  ${migrated}
-  ⏭️  Skipped:   ${skipped} (already in DB)
-  ❌ Failed:    ${failed}
-  📊 Total:     ${migrated + skipped + failed}
-═══════════════════════════════════════════════
-`);
-
+  console.log(`\n═══════════════════════════════════════════════\n  Migration Complete${dryRun ? " (DRY RUN)" : ""}\n═══════════════════════════════════════════════\n  ✅ Migrated:  ${migrated}\n  ⏭️  Skipped:   ${skipped}\n  ❌ Failed:    ${failed}\n  📊 Total:     ${migrated + skipped + failed}\n═══════════════════════════════════════════════\n`);
   process.exit(0);
 }
 
@@ -305,3 +327,4 @@ migrate().catch((err) => {
   console.error("Migration failed:", err);
   process.exit(1);
 });
+

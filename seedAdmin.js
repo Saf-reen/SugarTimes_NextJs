@@ -8,7 +8,7 @@ const seedAdmin = async () => {
   await connectDB();
 
   const email = "sandalanithinkumar2@gmail.com";
-  const password = "Nithin@2004";
+    const password = "Nithin@2004";
   const name = "Admin";
 
   try {
