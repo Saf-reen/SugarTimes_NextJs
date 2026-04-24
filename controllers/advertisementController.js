@@ -3,7 +3,12 @@ import Advertisement from "../models/Advertisement.js";
 const isActiveNow = (ad) => {
   const now = new Date();
   if (ad.startDate && new Date(ad.startDate) > now) return false;
-  if (ad.endDate && new Date(ad.endDate) < now) return false;
+  if (ad.endDate) {
+    const end = new Date(ad.endDate);
+    // Make the end date inclusive by setting it to the very end of that day (23:59:59.999)
+    end.setHours(23, 59, 59, 999);
+    if (end < now) return false;
+  }
   return ad.active !== false;
 };
 
@@ -20,7 +25,7 @@ export const getAdvertisements = async (req, res) => {
         { $or: [{ categories: category }, { categories: { $size: 0 } }] },
       ]);
     }
-    let ads = await Advertisement.find(filter).sort({ priority: -1, createdAt: -1 });
+    let ads = await Advertisement.find(filter).sort({ createdAt: -1 });
     if (activeOnly === "true") ads = ads.filter(isActiveNow);
     res.json(ads);
   } catch (err) {

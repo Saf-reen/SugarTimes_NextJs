@@ -13,7 +13,6 @@ const advertisementSchema = new mongoose.Schema({
   // given parent-category or sub-category labels.
   categories: { type: [String], default: [] },
   active: { type: Boolean, default: true },
-  priority: { type: Number, default: 0 },
   startDate: Date,
   endDate: Date,
 }, { timestamps: true });
