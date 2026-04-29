@@ -6,7 +6,7 @@ const advertisementSchema = new mongoose.Schema({
   link: { type: String, default: "" },
   placement: {
     type: String,
-    enum: ["middle", "sidebar", "both", "home_banner"],
+    enum: ["middle", "sidebar", "both", "home_banner", "news_top"],
     default: "middle",
   },
   // Empty array = show on ALL categories. Otherwise restricted to the

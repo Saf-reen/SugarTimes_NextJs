@@ -86,3 +86,53 @@ Enjoy reading!`;
     console.error("Failed to send WhatsApp notification:", err.message);
   }
 };
+
+/**
+ * Sends a 6-digit OTP to the user's email for login verification.
+ * @param {string} email - User's email address
+ * @param {string} otp - 6-digit OTP string
+ */
+export const sendOtpEmail = async (email, otp) => {
+  try {
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+      tls: { rejectUnauthorized: false },
+    });
+
+    await transporter.sendMail({
+      from: `"Sugar Times Magazine" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Your Login Verification Code – Sugar Times",
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden;">
+          <div style="background: #10b981; color: #fff; padding: 20px; text-align: center;">
+            <h2 style="margin: 0; font-size: 20px;">Verification Code</h2>
+          </div>
+          <div style="padding: 30px; background: #fff; text-align: center;">
+            <p style="color: #374151; font-size: 15px; margin-top: 0;">Use the following 6-digit code to securely log in to your account.</p>
+            
+            <div style="background: #f9fafb; border: 1px dashed #10b981; padding: 20px; border-radius: 12px; margin: 24px 0;">
+              <h1 style="margin: 0; font-size: 32px; color: #10b981; letter-spacing: 5px;">${otp}</h1>
+            </div>
+
+            <p style="color: #6b7280; font-size: 13px;">This code is valid for 5 minutes. If you did not request this code, you can safely ignore this email.</p>
+          </div>
+          <div style="background: #f9fafb; padding: 14px; text-align: center; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
+            Sugar Times Magazine &bull; India's No.1 Sugar Industry Publication
+          </div>
+        </div>
+      `,
+    });
+    console.log(`[Email OTP] Sent successfully to ${email}`);
+    return { success: true };
+  } catch (err) {
+    console.error("[Email OTP] Failed to send email:", err.message);
+    return { success: false, error: err.message };
+  }
+};

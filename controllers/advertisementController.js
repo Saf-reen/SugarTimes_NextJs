@@ -17,6 +17,7 @@ export const getAdvertisements = async (req, res) => {
     const { placement, category, activeOnly } = req.query;
     const filter = {};
     if (placement) {
+      // If ad is set to 'both' (All Placements), it should match ANY placement query
       filter.$or = [{ placement }, { placement: "both" }];
     }
     if (category) {
