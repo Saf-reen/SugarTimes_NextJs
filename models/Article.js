@@ -14,6 +14,7 @@ const articleSchema = new mongoose.Schema({
   showContributor: { type: Boolean, default: true },
   contributorName: { type: String, default: "" },
   contributorBio: { type: String, default: "" },
+  contributorImage: { type: String, default: "" },
   status: { type: String, enum: ["draft", "published"], default: "published" },
   wpId: { type: Number, sparse: true, index: true },
 }, { timestamps: true, strict: false, minimize: false });

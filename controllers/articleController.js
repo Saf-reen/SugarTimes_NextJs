@@ -63,12 +63,6 @@ export const getArticles = async (req, res) => {
 
     if (search) filter.title = { $regex: search, $options: "i" };
 
-    // DEBUG: log the filter to see what's being queried
-    if (process.env.NODE_ENV !== "production") {
-      console.log("[Articles] category param:", category);
-      console.log("[Articles] filter:", JSON.stringify(filter, null, 2));
-    }
-
     const articles = await Article.find(filter)
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
@@ -82,7 +76,19 @@ export const getArticles = async (req, res) => {
 
 export const getArticleById = async (req, res) => {
   try {
-    const article = await Article.findById(req.params.id);
+    const { id } = req.params;
+    let article = null;
+
+    // 1. If it's a valid MongoDB ObjectId, try finding by _id
+    if (id.match(/^[0-9a-fA-F]{24}$/)) {
+      article = await Article.findById(id);
+    }
+
+    // 2. If not found, and it's a number, try finding by wpId
+    if (!article && !isNaN(id)) {
+      article = await Article.findOne({ wpId: parseInt(id) });
+    }
+
     if (!article) return res.status(404).json({ message: "Article not found" });
     res.json(article);
   } catch (err) {
@@ -96,7 +102,7 @@ export const getArticleById = async (req, res) => {
 const ARTICLE_FIELDS = [
   "title", "slug", "excerpt", "content", "category", "subcategory",
   "image", "author", "premium", "trending",
-  "showContributor", "contributorName", "contributorBio",
+  "showContributor", "contributorName", "contributorBio", "contributorImage",
   "status", "wpId",
 ];
 

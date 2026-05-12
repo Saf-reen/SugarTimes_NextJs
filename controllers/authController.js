@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import { createOtp, verifyOtp as checkOtp } from "../utils/otpStore.js";
-import { sendOtpEmail } from "../utils/notificationService.js";
+import { sendOtpEmail, sendResetPasswordEmail } from "../utils/notificationService.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -173,6 +173,94 @@ export const login = async (req, res) => {
       user: { id: user._id, name: user.name, email, role: user.role },
     });
   } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── Password Reset Flow ──────────────────────────────────────────────────────
+
+export const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "Email is required." });
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail });
+    if (!user) {
+      return res.status(404).json({ message: "Account with this email not found." });
+    }
+
+    // Generate OTP using existing store
+    const { otp, cooldown, waitSeconds } = createOtp(normalizedEmail);
+    if (cooldown) {
+      return res.status(429).json({
+        message: `Please wait ${waitSeconds} seconds before requesting another OTP.`,
+      });
+    }
+
+    // Send reset email
+    const { success } = await sendResetPasswordEmail(normalizedEmail, otp);
+    if (!success) {
+      return res.status(502).json({ message: "Failed to send reset email." });
+    }
+
+    res.json({ message: "Reset code sent to your email.", email: normalizedEmail });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+export const verifyResetOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const { valid, reason } = checkOtp(normalizedEmail, String(otp).trim());
+    if (!valid) return res.status(401).json({ message: reason });
+
+    const user = await User.findOne({ email: normalizedEmail });
+    if (!user) return res.status(404).json({ message: "User not found." });
+
+    // Return a temporary token for the next step (Create Password)
+    // We sign it with a shorter expiry (15m)
+    const resetToken = jwt.sign(
+      { id: user._id, purpose: "password_reset" },
+      process.env.JWT_SECRET,
+      { expiresIn: "15m" }
+    );
+
+    res.json({ message: "OTP verified.", resetToken });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+export const resetPassword = async (req, res) => {
+  try {
+    const { resetToken, newPassword } = req.body;
+    if (!resetToken || !newPassword) {
+      return res.status(400).json({ message: "Token and new password are required." });
+    }
+
+    // Verify reset token
+    const decoded = jwt.verify(resetToken, process.env.JWT_SECRET);
+    if (decoded.purpose !== "password_reset") {
+      return res.status(401).json({ message: "Invalid or expired reset token." });
+    }
+
+    const user = await User.findById(decoded.id);
+    if (!user) return res.status(404).json({ message: "User not found." });
+
+    // Update password
+    const hashed = await bcrypt.hash(newPassword, 10);
+    user.password = hashed;
+    await user.save();
+
+    res.json({ message: "Password updated successfully. You can now log in." });
+  } catch (err) {
+    if (err.name === "TokenExpiredError") {
+      return res.status(401).json({ message: "Reset session expired. Please start over." });
+    }
     res.status(500).json({ message: err.message });
   }
 };

@@ -136,3 +136,50 @@ export const sendOtpEmail = async (email, otp) => {
     return { success: false, error: err.message };
   }
 };
+
+/**
+ * Sends a 6-digit OTP for password reset.
+ */
+export const sendResetPasswordEmail = async (email, otp) => {
+  try {
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+      tls: { rejectUnauthorized: false },
+    });
+
+    await transporter.sendMail({
+      from: `"Sugar Times Magazine" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Password Reset Request – Sugar Times",
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden;">
+          <div style="background: #ef4444; color: #fff; padding: 20px; text-align: center;">
+            <h2 style="margin: 0; font-size: 20px;">Reset Your Password</h2>
+          </div>
+          <div style="padding: 30px; background: #fff; text-align: center;">
+            <p style="color: #374151; font-size: 15px; margin-top: 0;">You have requested to reset your account password. Use the code below to proceed.</p>
+            
+            <div style="background: #fef2f2; border: 1px dashed #ef4444; padding: 20px; border-radius: 12px; margin: 24px 0;">
+              <h1 style="margin: 0; font-size: 32px; color: #ef4444; letter-spacing: 5px;">${otp}</h1>
+            </div>
+
+            <p style="color: #6b7280; font-size: 13px;">This code is valid for 5 minutes. If you did not request this, please change your security settings immediately.</p>
+          </div>
+          <div style="background: #f9fafb; padding: 14px; text-align: center; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
+            Sugar Times Magazine &bull; India's No.1 Sugar Industry Publication
+          </div>
+        </div>
+      `,
+    });
+    return { success: true };
+  } catch (err) {
+    console.error("[Reset Password Email] Failed:", err.message);
+    return { success: false, error: err.message };
+  }
+};
